@@ -1,0 +1,63 @@
+# Datathon@IndoML 2026 — Track 1. Single source of truth for paths and tunables.
+# Large/regenerable artifacts live on B: (NVMe, 877 GB free, ~2.8 GB/s read).
+
+paths:
+  repo:        "C:/Users/iamsh/Desktop/detection"
+  # competition downloads (read-only, byte-verified against the Codabench API)
+  val_zip:     "C:/Users/iamsh/Desktop/detection/data/validation.zip"   #   445,335,228 B
+  test_zip:    "C:/Users/iamsh/Desktop/detection/data/input_data.zip"   # 1,086,912,345 B
+  # working storage on the fast SSD
+  scratch:     "B:/indoml"
+  raw:         "B:/indoml/raw"        # HF corpus, 182 parquet shards, ~16.51 GiB
+  features:    "B:/indoml/features"   # cached encoder output, fp16
+  ckpt:        "B:/indoml/ckpt"
+  cache:       "B:/indoml/cache"
+
+hf:
+  repo: "ARTPARK-IISc/Vaani-Noise-Event-Dataset"
+  # token read from .env:HUGGING_FACE_PAT — gated repo, needs "Agree and access"
+
+audio:
+  sr: 16000
+  clip_sec: 5.0          # training window
+  hop: 160               # 10 ms label grid
+  time_pool: 2           # -> 20 ms output frames, matching WavLM's native 50 Hz
+
+encoder:
+  name: "microsoft/wavlm-base-plus"
+  drop_last_layers: 2    # Schmid et al. ICASSP 2025 — final layers overfit pretraining
+  frame_sec: 0.02
+
+# Feature cache sizing (fp16, 768-d @ 50 Hz = 276 MB per audio-hour)
+#   gold    21.85 h ->  6.0 GB
+#   silver 100.32 h -> 27.7 GB
+#   bronze  32.42 h ->  9.0 GB
+#   val      3.51 h ->  1.0 GB
+#   test    10.81 h ->  3.0 GB
+#   TOTAL           -> 46.7 GB   (of 877 GB free — no need to subset)
+
+model:
+  rnn_dim: 256
+  rnn_layers: 2
+  n_cat: 7
+  n_out: 8               # channel 0 = any-noise (the scored target), 1..7 = categories
+
+decode:
+  # baseline defaults; to be re-swept on our own split (their grid is coarse)
+  threshold: 0.5
+  median: 7
+  min_dur: 0.05
+  merge_gap: 0.10
+  clip_gate: 0.0
+
+eval:
+  # validation is SPLIT: tune on one half, decide on the other. Never tune and
+  # gate on the same clips.
+  tune_frac: 0.5
+  split_seed: 42
+  group_by: "speaker"    # filename fields 2..5 — the test set is speaker-disjoint
+
+submission:
+  target_clips: 5517
+  clip_id: "filename_stem"   # confirmed from the organizers' own baseline (p.stem)
+  min_score_to_submit: 1.1835

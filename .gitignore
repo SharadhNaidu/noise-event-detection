@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+workdir/
+*_ext/
+checkpoints/*.pt
+checkpoints/*.pkl
+posteriors/
+ext/PretrainedSED/resources/*.pt
+*.zip
+!submissions/*.zip
+.pytest_cache/

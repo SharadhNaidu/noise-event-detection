@@ -1,0 +1,25 @@
+{
+ "kind": "perpop",
+ "natural": {
+  "kind": "asym",
+  "thr_on": 0.6,
+  "thr_off": 0.7,
+  "min_dur": 0.2,
+  "merge_gap": 0.06,
+  "refine": 0.2
+ },
+ "synthetic": {
+  "kind": "asym",
+  "thr_on": 0.6,
+  "thr_off": 0.7,
+  "min_dur": 0.08,
+  "merge_gap": 0.06,
+  "refine": 0.3
+ },
+ "overlay": {
+  "ch": 7,
+  "thr": 0.55,
+  "ratio": 4.0,
+  "natural_only": true
+ }
+}
