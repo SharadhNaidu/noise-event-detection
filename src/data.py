@@ -7,13 +7,15 @@ silent data corruption is the most expensive kind of bug in a competition.
 from __future__ import annotations
 
 import json
+import os
 import zipfile
 from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VAL_ZIP = ROOT / "data" / "validation.zip"
-TEST_ZIP = ROOT / "data" / "input_data.zip"
+DATA = Path(os.environ.get("INDOML_DATA", str(ROOT / "data")))   # folder holding the organisers' zips
+VAL_ZIP = DATA / "validation.zip"
+TEST_ZIP = DATA / "input_data.zip"
 
 
 def clip_id_from_filename(name: str) -> str:
