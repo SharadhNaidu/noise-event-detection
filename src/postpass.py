@@ -178,3 +178,34 @@ def read_predictions(zip_path):
         o = json.loads(line)
         rows[o["clip_id"]] = [(e["onset"], e["offset"]) for e in o["events"]]
     return rows
+
+
+def _union(evs):
+    out = []
+    for s, e in sorted(evs):
+        if out and s <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return out
+
+
+def agreement(a, b, collar=0.2):
+    """How close two prediction sets {cid: [(on, off)]} are: clips differing, event F1 (greedy 1:1 match, onset AND
+    offset within collar s) and pooled segment Dice on exact interval unions. Used to compare a rebuild with an upload."""
+    tp = na = nb = diff = 0
+    inter = tot = 0.0
+    for c in b:
+        A, B = [tuple(e) for e in a.get(c, [])], [tuple(e) for e in b[c]]
+        diff += A != B; na += len(A); nb += len(B)
+        used = set()
+        for s, e in A:
+            for j, (s2, e2) in enumerate(B):
+                if j not in used and abs(s - s2) <= collar and abs(e - e2) <= collar:
+                    used.add(j); tp += 1
+                    break
+        ua, ub = _union(A), _union(B)
+        tot += sum(e - s for s, e in ua) + sum(e - s for s, e in ub)
+        inter += sum(max(0.0, min(e, e2) - max(s, s2)) for s, e in ua for s2, e2 in ub)
+    return {"clips_differing": diff, "clips": len(b), "events": (na, nb),
+            "event_f1": 2 * tp / (na + nb) if na + nb else 1.0, "dice": 2 * inter / tot if tot else 1.0}

@@ -66,3 +66,14 @@ def test_write_predictions_keeps_empty_clips(tmp_path):
     rows = {json.loads(x)["clip_id"]: json.loads(x)["events"] for x in lines}
     assert rows == {"a": [{"onset": 0.1, "offset": 0.2}], "b": []}
     assert zipfile.ZipFile(out).namelist() == ["predictions.jsonl"]
+
+
+def test_agreement_identical_and_shifted():
+    a = {"x": [(0.0, 1.0), (2.0, 3.0)], "y": []}
+    r = PP.agreement(a, a)
+    assert r["clips_differing"] == 0 and r["event_f1"] == 1.0 and r["dice"] == 1.0
+    b = {"x": [(0.02, 1.0), (2.0, 3.5)], "y": [(0.0, 0.5)]}
+    r = PP.agreement(a, b)
+    assert r["clips_differing"] == 2
+    assert r["event_f1"] == 2 * 1 / (2 + 3)          # only (0,1)~(0.02,1) within 0.2 s collar
+    assert abs(r["dice"] - 2 * 1.98 / (2.0 + 2.98)) < 1e-9   # exact interval union, no frame grid
