@@ -1,0 +1,42 @@
+% Fig. 1: system overview (TikZ, full text width)
+\begin{tikzpicture}[font=\footnotesize, >={Stealth[length=4pt]}, x=0.97cm, y=0.95cm,
+  box/.style={draw=muted, rounded corners=2pt, align=center, inner sep=2pt, line width=0.4pt, minimum height=0.78cm},
+  arr/.style={->, draw=muted, line width=0.55pt},
+  lab/.style={font=\scriptsize\itshape, text=muted, align=center},
+  ttl/.style={font=\footnotesize\bfseries, anchor=west}]
+% (a) member network
+\node[ttl] at (-0.05,4.25) {(a) One ensemble member, 20\,ms frames};
+\node[box, fill=fblue, minimum width=3.45cm] (wav) at (1.75,3.45) {WavLM-Base+, layers 1--4\\768-d};
+\node[box, fill=forange, minimum width=3.45cm] (bea) at (5.45,3.45) {BEATs-strong (optional)\\768-d + 447 AudioSet logits};
+\node[box, fill=fgray, minimum width=7.15cm, minimum height=0.5cm] (fus) at (3.6,2.3) {LayerNorm each, concatenate (1983-d) $\rightarrow$ optional 2-layer Conformer};
+\node[box, fill=fgray, minimum width=7.15cm, minimum height=0.5cm] (gru) at (3.6,1.55) {bidirectional GRU, 2 layers $\times$ 256 per direction};
+\node[box, fill=faqua, minimum width=1.7cm] (h1) at (0.9,0.4) {frame\\8 channels};
+\node[box, fill=faqua, minimum width=1.7cm] (h2) at (2.7,0.4) {clip\\attention pool};
+\node[box, fill=faqua, minimum width=1.7cm] (h3) at (4.5,0.4) {boundary\\signed, $\pm$0.5\,s};
+\node[box, fill=faqua, minimum width=1.7cm] (h4) at (6.3,0.4) {RED latch\\start / end};
+\draw[arr] (wav.south) -- (wav.south |- fus.north);
+\draw[arr] (bea.south) -- (bea.south |- fus.north) node[lab, midway, right] {frozen or tuned};
+\draw[arr] (fus) -- (gru);
+\foreach \n in {h1,h2,h3,h4} \draw[arr] (gru.south -| \n) -- (\n.north);
+\draw[muted!60, line width=0.4pt] (7.75,-0.1) -- (7.75,4.4);
+% (b) inference
+\node[ttl] at (7.95,4.25) {(b) Inference on a test clip};
+\node[box, fill=fgray, minimum width=1.75cm] (clip) at (9.0,3.45) {test clip\\16\,kHz mono};
+\node[box, fill=fgray, minimum width=1.75cm, minimum height=1.25cm] (route) at (9.0,1.4) {route:\\peak at int16\\full scale?};
+\draw[arr] (clip) -- (route);
+\node[lab] at (11.55,3.55) {ensemble mean};
+\node[lab] at (14.15,3.55) {hysteresis readout};
+\node[lab] at (16.75,3.55) {post-pass};
+\node[font=\scriptsize\bfseries, text=cblue, anchor=west] at (10.3,3.1) {yes $\rightarrow$ natural: 3{,}437 clips};
+\node[box, fill=fblue, minimum width=2.35cm] (n1) at (11.55,2.5) {7 members,\\3 with 3-shift TTA};
+\node[box, fill=fgray, minimum width=2.35cm] (n2) at (14.15,2.5) {hold $0.6$, peak $0.7$\\min.\ 0.20\,s, refine};
+\node[box, fill=faqua, minimum width=2.35cm] (n3) at (16.75,2.5) {bg.\ extension, habit\\span, nested events};
+\node[font=\scriptsize\bfseries, text=corange, anchor=west] at (10.3,1.15) {no $\rightarrow$ synthetic: 2{,}080 clips};
+\node[box, fill=forange, minimum width=2.35cm] (s1) at (11.55,0.55) {6 members,\\no TTA};
+\node[box, fill=fgray, minimum width=2.35cm] (s2) at (14.15,0.55) {hold $0.6$, peak $0.7$\\min.\ 0.08\,s, refine};
+\node[box, fill=faqua, minimum width=2.35cm] (s3) at (16.75,0.55) {level filter $-$16\,dB,\\edge shift};
+\draw[arr] (route.east) -- ++(0.25,0) |- (n1.west);
+\draw[arr] (route.east) -- ++(0.25,0) |- (s1.west);
+\draw[arr] (n1) -- (n2); \draw[arr] (n2) -- (n3);
+\draw[arr] (s1) -- (s2); \draw[arr] (s2) -- (s3);
+\end{tikzpicture}

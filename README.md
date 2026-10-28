@@ -9,6 +9,8 @@ Frame-level sound-event detection of noise events in Indian-language speech (Vaa
 | natural clips (3,437) | 0.4936 | 0.7178 |
 | synthetic clips (2,080) | 0.9929 | 0.9845 |
 
+**Technical report:** [`docs/technical_report.pdf`](docs/technical_report.pdf) (3 pages, IEEE format; LaTeX source and figure script in `docs/report/`).
+
 ## Contents
 1. [Quick start (inference)](#quick-start-inference)
 2. [Method](#method)
@@ -89,6 +91,7 @@ train/                       training launchers, cfg_to_cmd.py (exact launch lin
 ext/PretrainedSED/           vendored BEATs code from fschmid56/PretrainedSED (MIT; weights downloaded separately)
 tests/                       pytest suite
 submissions/sub_1016_tta3.zip  the file scored 1.5926 on the leaderboard
+docs/technical_report.pdf    the 3-page technical report (source: docs/report/, build with pdflatex x2)
 ```
 
 ## Environment and hardware

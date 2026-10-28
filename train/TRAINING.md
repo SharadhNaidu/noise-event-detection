@@ -8,7 +8,7 @@ In this repo every path comes from `src/paths.py` (`INDOML_ROOT`, default `./wor
 
 Always cap threads (`OMP_NUM_THREADS=12`). Uncapped, torch spawned 138 threads and ran 4.6x slower.
 
-Train stores, unless noted: `gold_audio synth_aug synth_mask_t valtune_audio silver_long`. Silver had its boundary loss off (`--no-boundary-stores silver_long`) and weight 0.5.
+Train stores, unless noted: `gold_audio synth_aug synth_mask_t valtune_audio silver_long`. Silver (`--no-boundary-stores silver_long`) has weight 0.5 on every loss term. Its boundary targets still train the boundary head, because that is masked only with `--mask-nb-boundary`, which no member used.
 
 | member | launched | command |
 |---|---|---|

@@ -1,0 +1,7 @@
+*.aux
+*.log
+*.out
+hi-*.png
+pg-*.png
+fig/*.png
+technical_report.pdf
