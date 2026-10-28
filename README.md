@@ -47,7 +47,7 @@ Times are in seconds, rounded to 3 decimals. Every input clip gets a line. The d
 
 **Other flags:** `--work DIR` sets the scratch folder for the audio store, BEATs features and linked checkpoints (default `workdir/infer`). The large per-run audio and feature files are deleted at the end unless you pass `--keep-work`. `--limit N` runs the first N clips (a smoke test).
 
-**Run time** for the 5,517 test clips (about 10.8 h of audio) on an RTX 4070 Laptop (8 GB) is about 75 min, mostly the three TTA members. A GPU with 8 GB or more is recommended. CPU works but is slow.
+**Run time** for the 5,517 test clips (about 10.8 h of audio) on an RTX 4070 Laptop (8 GB) was 66 min in our full run, measured while other jobs shared the machine. Most of it goes on the three TTA members. A GPU with 8 GB or more is recommended. CPU works but is slow.
 
 **GPU support:** the pinned `torch 2.4.1+cu118` wheels ship kernels for compute capability 3.7–9.0, i.e. Kepler (K80) to Hopper (A100, H100, RTX 20/30/40, T4, V100). They need an NVIDIA driver ≥ 450 (CUDA 11.x). RTX 50xx and other Blackwell GPUs need a newer torch build, which we have not tested. On such machines, `--device cpu` runs every step on CPU, including BEATs feature extraction. If you run short of GPU memory, lower `--batch` (default 8).
 
@@ -138,6 +138,15 @@ The final weights of three ensemble members, **`v12`, `v12s62` and `v5all`**, we
 | `v12` (12-layer, seed 61, final epoch) | natural | `v12_ep4` (same run, epoch 4) |
 | `v12s62` (12-layer, seed 62) | natural | `v12_ep4` |
 | `v5all` (v5_S recipe trained on all validation data) | synthetic (×2) | `v5_S` |
+
+**What the substitution costs.** We ran live inference on all 5,517 test clips and compared the result with the uploaded leaderboard file (`PP.agreement`, 0.2 s collar):
+
+| route | clips | event F1 vs LB file | segment Dice vs LB file |
+|---|---|---|---|
+| synthetic | 2,080 | 0.9986 | 0.9934 |
+| natural | 3,437 | 0.9599 | 0.9556 |
+
+Synthetic predictions change only by millisecond edge shifts. Natural predictions move more, because 2 of the 7 natural members are replaced by one checkpoint. The exact leaderboard file is therefore reproduced from the cached posteriors (next section), and live inference is the closest run possible with the surviving weights.
 
 All three can be retrained with the commands in [Training](#training). Seeds are fixed, but bit-exact equality with the lost weights is not guaranteed.
 
