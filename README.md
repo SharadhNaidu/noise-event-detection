@@ -24,7 +24,7 @@ Frame-level sound-event detection of noise events in Indian-language speech (Vaa
 
 ```bash
 git clone https://github.com/SharadhNaidu/noise-event-detection && cd noise-event-detection
-python3.10 -m venv .venv && source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python3.10 -m venv .venv && source .venv/bin/activate        # Windows: .venv\Scripts\activate  (Ubuntu: apt install python3.10-venv)
 pip install -r requirements_inference.txt
 bash scripts/run_inference.sh /path/to/wavs predictions.zip   # or a .zip of wavs, e.g. input_data.zip
 ```
@@ -48,6 +48,8 @@ Times are in seconds, rounded to 3 decimals. Every input clip gets a line. The d
 **Other flags:** `--work DIR` sets the scratch folder for the audio store, BEATs features and linked checkpoints (default `workdir/infer`). The large per-run audio and feature files are deleted at the end unless you pass `--keep-work`. `--limit N` runs the first N clips (a smoke test).
 
 **Run time** for the 5,517 test clips (about 10.8 h of audio) on an RTX 4070 Laptop (8 GB) is about 75 min, mostly the three TTA members. A GPU with 8 GB or more is recommended. CPU works but is slow.
+
+**GPU support:** the pinned `torch 2.4.1+cu118` wheels ship kernels for compute capability 3.7–9.0, i.e. Kepler (K80) to Hopper (A100, H100, RTX 20/30/40, T4, V100). They need an NVIDIA driver ≥ 450 (CUDA 11.x). RTX 50xx and other Blackwell GPUs need a newer torch build, which we have not tested. On such machines, `--device cpu` runs every step on CPU, including BEATs feature extraction. If you run short of GPU memory, lower `--batch` (default 8).
 
 **Messages you can ignore:** transformers prints that `pos_conv_embed ... weight_g/weight_v` were "not used" and `parametrizations.weight.original0/1` were "newly initialized". This comes from how newer torch names weight-norm parameters when the pretrained hub weights load. Every checkpoint stores those tensors and is loaded with `strict=True` right afterwards, so nothing stays at its random initial value.
 
@@ -79,7 +81,7 @@ scripts/tta_posteriors.py    per-member posteriors (plain or TTA) on a store -> 
 reproduce/rebuild_lb.py      cached test posteriors -> the leaderboard file (md5-checked)
 reproduce/habit_test_shipped.json  the 124 natural test clips the shipped habit model turned full-span
 src/                         training + model + decoding library (finetune.py, model.py, gate.py, postpass.py, habit.py, ...)
-src/paths.py                 every data path: $INDOML_ROOT (default ./workdir), $INDOML_DATA (default ./data)
+src/paths.py                 $INDOML_ROOT (default ./workdir): audio stores, features, checkpoints; src/data.py reads $INDOML_DATA (default ./data)
 configs/members.json         ensemble lists, TTA members, lost-checkpoint substitutes
 configs/members_cfg.json     full training argparse config of every shipped checkpoint
 configs/postpass.json        all decode constants;  configs/readouts/*.json  the two frozen readouts
@@ -101,13 +103,13 @@ submissions/sub_1016_tta3.zip  the file scored 1.5926 on the leaderboard
 | Inference (tested) | Windows 11, Intel i9-14900HX, 32 GB RAM, RTX 4070 Laptop 8 GB, driver 561.09, CUDA 11.8 wheels |
 | Precision | bf16 autocast on CUDA, fp32 on CPU |
 | Threads | set `OMP_NUM_THREADS=12 MKL_NUM_THREADS=12` on many-core hosts. Uncapped torch ran 4.6× slower on the 256-core server |
-| System dependencies | `libsndfile` (bundled in the `soundfile` wheels on Windows/macOS; `apt install libsndfile1` on minimal Linux), `bash` for the `.sh` launchers, internet access on the first run (asset download and the `wavlm-base-plus` config/weights from the HF hub). No ffmpeg is needed: inputs are wav |
+| System dependencies | `libsndfile` (bundled in the `soundfile` wheels on Windows/macOS; `apt install libsndfile1` on minimal Linux), `python3.10-venv` on Ubuntu, `bash` for the `.sh` launchers (they call `python` from the active venv; override with `PYTHON=/path/to/python`), internet access on the first run (asset download and the `wavlm-base-plus` config/weights from the HF hub). No ffmpeg is needed: inputs are wav |
 
 ### Pretrained dependencies
 
 | model | source | version |
 |---|---|---|
-| WavLM Base+ | [`microsoft/wavlm-base-plus`](https://huggingface.co/microsoft/wavlm-base-plus) (HF hub, fetched by transformers) | revision `4c66d4806a428f2e922ccfa1a962776e232d487b` |
+| WavLM Base+ | [`microsoft/wavlm-base-plus`](https://huggingface.co/microsoft/wavlm-base-plus) (HF hub, fetched by transformers; only its config matters, every weight is overwritten by our checkpoints) | tested with revision `4c66d4806a428f2e922ccfa1a962776e232d487b` |
 | BEATs (AudioSet-strong fine-tuned, `BEATs_strong_1.pt`) | [PretrainedSED release v0.0.1](https://github.com/fschmid56/PretrainedSED/releases/tag/v0.0.1), MIT | md5 `0b3d1253749058df5551beeb0a8f5e87` |
 
 The model code for BEATs is vendored in `ext/PretrainedSED/` (MIT, licence included).
@@ -124,7 +126,7 @@ The checkpoints and cached posteriors are too large for git. They are attached t
 | `checkpoints/bts_R.pt` | bts_C recipe + per-class presence (RED) head | 173 MB |
 | `checkpoints/v5_S.pt` | + fine-tuned BEATs, LLRD 0.8, 6 epochs, seed 13 | 533 MB |
 | `checkpoints/v12_ep4.pt` | 12-layer WavLM (layer sum) + fine-tuned BEATs, epoch 4 of the v12 run | 760 MB |
-| `checkpoints/habit_model.pkl` | labelling-habit model (scikit-learn 1.7.2) | <1 MB |
+| `checkpoints/habit_model.pkl` | labelling-habit model (scikit-learn 1.7.2) | 1.5 MB |
 | `posteriors/post8_test_audio_<tag>.pkl` | cached test posteriors of all 8 members (+ `_tta` for hon_A, bft_S, v5_S) | 11 × 81 MB |
 
 ### Lost checkpoints (please read)
@@ -164,9 +166,9 @@ vs uploaded LB file sub_1016_tta3.zip: clips differing 383/5517, events 13530 vs
 
 ## Training
 
-All paths go through `src/paths.py`: `INDOML_ROOT` (default `./workdir`) holds `audio/` stores and `ckpt/` outputs, and `INDOML_DATA` (default `./data`) holds the organisers' `validation.zip` and `input_data.zip`. Install with `pip install -r requirements_train.txt`.
+Paths come from two variables: `INDOML_ROOT` (`src/paths.py`, default `./workdir`) holds `audio/` stores and `ckpt/` outputs, and `INDOML_DATA` (`src/data.py`, default `./data`) holds the organisers' `validation.zip` and `input_data.zip`. Install with `pip install -r requirements_train.txt`.
 
-**1. Data.** The training data is the [Vaani Noise Event Dataset](https://huggingface.co/datasets/ARTPARK-IISc/Vaani-Noise-Event-Dataset) (CC-BY-4.0). It is gated: accept its terms on Hugging Face and `export HF_TOKEN=...`. Download its parquet shards to `$INDOML_ROOT/raw/data/`, e.g. `huggingface-cli download ARTPARK-IISc/Vaani-Noise-Event-Dataset --repo-type dataset --local-dir $INDOML_ROOT/raw`. Put `validation.zip` and `input_data.zip` (competition files) in `$INDOML_DATA`.
+**1. Data.** The training data is the [Vaani Noise Event Dataset](https://huggingface.co/datasets/ARTPARK-IISc/Vaani-Noise-Event-Dataset) (CC-BY-4.0). It is gated: accept its terms on Hugging Face and `export HF_TOKEN=...`. Download its parquet shards to `$INDOML_ROOT/raw/data/`, e.g. `huggingface-cli download ARTPARK-IISc/Vaani-Noise-Event-Dataset --repo-type dataset --local-dir ${INDOML_ROOT:-workdir}/raw`. Put `validation.zip` and `input_data.zip` (competition files) in `$INDOML_DATA`.
 
 **2. Audio stores** (run from `src/`):
 
@@ -201,9 +203,10 @@ python train/train_habit.py --out checkpoints/habit_model.pkl
 ```
 This trains on gold plus the TUNE half of validation and reports AUC on the held-out DECIDE half. Expected: gold hold-out AUC ≈ 0.79, DECIDE AUC ≈ 0.73.
 
-**5. Test posteriors** for the rebuild:
+**5. Test posteriors** for the rebuild. Training writes checkpoints to `$INDOML_ROOT/ckpt/`, which is where this script reads them. To use the downloaded ones instead, copy them there first:
 ```bash
-python scripts/tta_posteriors.py hon_A test_audio [--tta] --out posteriors/
+mkdir -p workdir/ckpt && cp checkpoints/*.pt workdir/ckpt/
+python scripts/tta_posteriors.py hon_A test_audio [--tta] --out posteriors/     # needs workdir/audio/test_audio + BEATs features for bts_*
 ```
 
 ## Tests

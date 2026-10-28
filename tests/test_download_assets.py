@@ -12,7 +12,7 @@ MD5 = {k: hashlib.md5(v).hexdigest() for k, v in BLOB.items()}
 
 
 def fake_urlopen(calls):
-    def op(url):
+    def op(url, timeout=None):
         calls.append(url)
         name = url.rsplit("/", 1)[1]
         if name == "md5.txt":
@@ -38,3 +38,22 @@ def test_corrupt_download_is_reported(tmp_path, monkeypatch):
     monkeypatch.setattr(D.urllib.request, "urlopen", fake_urlopen([]))
     monkeypatch.setitem(MD5, "p.pkl", "0" * 32)
     assert D.release_files("posteriors/", tmp_path) == [str(tmp_path / "posteriors" / "p.pkl")]
+
+
+def test_missing_release_gives_clear_error(tmp_path, monkeypatch):
+    def op(url, timeout=None):
+        raise D.urllib.error.HTTPError(url, 404, "Not Found", None, None)
+    monkeypatch.setattr(D.urllib.request, "urlopen", op)
+    import pytest
+    with pytest.raises(SystemExit, match="release"):
+        D.release_files("checkpoints/", tmp_path)
+
+
+def test_bad_md5_file_is_removed_and_no_match_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(D.urllib.request, "urlopen", fake_urlopen([]))
+    monkeypatch.setitem(MD5, "p.pkl", "0" * 32)
+    D.release_files("posteriors/", tmp_path)
+    assert not (tmp_path / "posteriors" / "p.pkl").exists()
+    import pytest
+    with pytest.raises(SystemExit, match="no entries"):
+        D.release_files("nothing/", tmp_path)

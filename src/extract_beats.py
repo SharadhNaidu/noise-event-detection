@@ -1,7 +1,7 @@
 """Frozen BEATs (AudioSet-STRONG, frame-level; Schmid et al. ICASSP 2025) features.
 
     python src/extract_beats.py --check                 # sanity check on the repo's metro clip
-    python src/extract_beats.py val_audio [store ...]    # -> <root>/beats/<store>.f16/.json
+    python src/extract_beats.py [--device=cpu|cuda] val_audio [store ...]    # -> <root>/beats/<store>.f16/.json
 
 Per 40 ms frame: 768-d embedding (input of the strong head) + 447 AudioSet-strong
 class logits = 1215 dims, stored with the same layout as the AST stores so
@@ -88,11 +88,13 @@ def check(dev):
 
 
 def main():
+    args = sys.argv[1:]
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    if sys.argv[1:] == ["--check"]:
+    if args and args[0].startswith("--device="):              # inference/infer.py passes its --device through
+        dev = args.pop(0).split("=", 1)[1]
+    if args == ["--check"]:
         check(dev)
         return
-    args = sys.argv[1:]
     model = "BEATs"
     if args and args[0].startswith("--model="):
         model = args.pop(0).split("=", 1)[1]

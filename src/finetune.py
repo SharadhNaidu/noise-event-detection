@@ -732,7 +732,7 @@ def clip_posteriors(net, arr, index, ids, crop_s, device, batch=8, ast=None,
                 np.stack(crops[i:i + batch]).astype(np.float32)).to(device)
             ab = (torch.from_numpy(np.stack(auxs[i:i + batch])).to(device)
                   if auxs else None)
-            with torch.autocast(device, dtype=torch.bfloat16, enabled=str(device).startswith("cuda")):   # CPU bf16 is emulated and ~10x slower
+            with torch.autocast(str(device).split(":")[0], dtype=torch.bfloat16, enabled=str(device).startswith("cuda")):   # CPU bf16 is emulated and ~10x slower
                 res = net(xb, aux=ab)
             if len(res) > 3 and res[3] is not None:
                 # Decode the LATCHED presence, not the frame posterior. The

@@ -21,6 +21,8 @@ import time
 import zipfile
 from pathlib import Path
 
+import numpy as np
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
@@ -52,11 +54,31 @@ def build_store(src, root, name, limit=None):
     import features as F
     items = _wav_sources(src)[:limit] if limit else _wav_sources(src)
     store = A.AudioStore(Path(root) / "audio", name)
-    for cid, _, read in items:
-        wav = F.decode_audio(read())
+    for cid, name, read in items:
+        try:
+            wav = F.decode_audio(read())
+        except Exception as e:                                   # one unreadable file must not sink the whole run
+            print(f"  WARNING: could not decode {name} ({type(e).__name__}: {e}); clip {cid} gets no events", flush=True)
+            wav = np.zeros(0, np.float32)
         store.add(cid, wav, {"dur_measured": len(wav) / F.TARGET_SR})
     store.close()
     return [i[0] for i in items]
+
+
+def link_checkpoints(ckpt_dir, work):
+    """Mirror <ckpt_dir>/*.pt into <work>/ckpt (src modules read $INDOML_ROOT/ckpt/<tag>.pt). Always rebuilt, so a
+    re-downloaded or removed checkpoint is never shadowed by a stale link from an earlier run."""
+    dst_dir = Path(work) / "ckpt"
+    if dst_dir.resolve() == Path(ckpt_dir).resolve():           # checkpoints already live in the work dir: use in place
+        return
+    if dst_dir.exists():
+        shutil.rmtree(dst_dir)
+    dst_dir.mkdir(parents=True)
+    for f in Path(ckpt_dir).glob("*.pt"):
+        try:
+            os.link(f, dst_dir / f.name)
+        except OSError:
+            shutil.copy2(f, dst_dir / f.name)
 
 
 def main():
@@ -71,11 +93,7 @@ def main():
     os.environ["INDOML_ROOT"] = str(work)                       # every src module reads paths from here
     import torch
     dev = a.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    for f in Path(a.ckpt_dir).glob("*.pt"):                     # checkpoints are looked up as $INDOML_ROOT/ckpt/<tag>.pt
-        dst = work / "ckpt" / f.name
-        if not dst.exists():
-            try: os.link(f, dst)
-            except OSError: shutil.copy2(f, dst)
+    link_checkpoints(a.ckpt_dir, work)
     import audiostore as A
     import habit as H
     import members as M
@@ -94,7 +112,7 @@ def main():
     nat = SE.natural_by_peak(arr, clips, ids); dur = {c: clips[c]["n"] / A.SR for c in ids}
     print(f"[1] store: {len(ids)} clips | natural {sum(nat.values())} | synthetic {len(ids) - sum(nat.values())} ({time.time() - t0:.0f}s)", flush=True)
     import subprocess
-    subprocess.run([sys.executable, str(REPO / "src" / "extract_beats.py"), store], check=True, env={**os.environ, "INDOML_ROOT": str(work)}, cwd=str(REPO / "src"))
+    subprocess.run([sys.executable, str(REPO / "src" / "extract_beats.py"), f"--device={dev}", store], check=True, env={**os.environ, "INDOML_ROOT": str(work)}, cwd=str(REPO / "src"))
     print(f"[2] BEATs features ({time.time() - t0:.0f}s)", flush=True)
     need = {}
     for t in mem["natural"] + mem["synthetic"]:
@@ -131,6 +149,8 @@ def main():
                     f.unlink()
                 except OSError as e:
                     print(f"  note: could not remove scratch file {f} ({e}); safe to delete by hand", flush=True)
+        if (work / "ckpt").resolve() != Path(a.ckpt_dir).resolve():   # links/copies of --ckpt-dir, never the originals
+            shutil.rmtree(work / "ckpt", ignore_errors=True)
 
 
 if __name__ == "__main__":

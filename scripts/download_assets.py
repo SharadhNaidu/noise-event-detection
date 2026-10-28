@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import shutil
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -17,6 +18,7 @@ REPO = Path(__file__).resolve().parent.parent
 RELEASE = "https://github.com/SharadhNaidu/noise-event-detection/releases/download/v1.0"
 BEATS_URL = "https://github.com/fschmid56/PretrainedSED/releases/download/v0.0.1/BEATs_strong_1.pt"
 BEATS_MD5 = "0b3d1253749058df5551beeb0a8f5e87"
+TIMEOUT = 120   # seconds without data before a stalled connection is abandoned
 
 
 def md5(p, chunk=1 << 22):
@@ -32,7 +34,7 @@ def fetch(url, p):
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(p.name + ".part")
     print("  downloading", url)
-    with urllib.request.urlopen(url) as r, open(tmp, "wb") as f:
+    with urllib.request.urlopen(url, timeout=TIMEOUT) as r, open(tmp, "wb") as f:
         shutil.copyfileobj(r, f, 1 << 22)
     tmp.replace(p)
 
@@ -43,19 +45,27 @@ def get(url, p, want):
         fetch(url, p)
     ok = md5(p) == want
     print(f"  {'OK ' if ok else 'BAD'} {p}")
+    if not ok:
+        p.unlink()                      # never leave a corrupt file where the code would load it; rerun to retry
     return [] if ok else [str(p)]
 
 
 def release_files(prefix, dest):
     """md5.txt (a release asset) lists '<md5>  <repo path>'; the asset name is the file's basename."""
-    table = urllib.request.urlopen(f"{RELEASE}/md5.txt").read().decode().splitlines()
-    bad = []
+    try:
+        table = urllib.request.urlopen(f"{RELEASE}/md5.txt", timeout=TIMEOUT).read().decode().splitlines()
+    except urllib.error.URLError as e:
+        sys.exit(f"cannot read {RELEASE}/md5.txt ({e}). Is the GitHub release v1.0 reachable from this machine?")
+    bad, n = [], 0
     for line in table:
         if not line.strip():
             continue
         want, name = line.split(maxsplit=1)
         if name.startswith(prefix):
+            n += 1
             bad += get(f"{RELEASE}/{Path(name).name}", Path(dest) / name, want)
+    if not n:
+        sys.exit(f"md5.txt of the release lists no entries under {prefix}")
     return bad
 
 

@@ -85,3 +85,32 @@ def test_missing_input_path_is_named(tmp_path):
 def test_empty_folder_rejected(tmp_path):
     with pytest.raises(ValueError, match="no .wav files"):
         I._wav_sources(tmp_path)
+
+
+def test_corrupt_wav_becomes_empty_clip_not_a_crash(tmp_path):
+    d = tmp_path / "in"; d.mkdir()
+    _wav(d / "good.wav")
+    (d / "bad.wav").write_bytes(b"this is not a wav file at all" * 10)
+    ids = I.build_store(d, tmp_path / "w", "s")
+    assert ids == ["bad", "good"]
+    arr, me = A.load_audio_store(tmp_path / "w" / "audio", "s")
+    assert me["clips"]["bad"]["n"] == 0 and me["clips"]["good"]["n"] == 16000
+
+
+def test_checkpoint_links_are_refreshed(tmp_path):
+    src = tmp_path / "ck"; src.mkdir(); work = tmp_path / "w"
+    (src / "a.pt").write_bytes(b"old")
+    I.link_checkpoints(src, work)
+    (src / "a.pt").unlink(); (src / "a.pt").write_bytes(b"new")      # re-download replaces the file
+    I.link_checkpoints(src, work)
+    assert (work / "ckpt" / "a.pt").read_bytes() == b"new"
+    (src / "a.pt").unlink()
+    I.link_checkpoints(src, work)                                     # removed from --ckpt-dir -> gone from work too
+    assert not (work / "ckpt" / "a.pt").exists()
+
+
+def test_ckpt_dir_inside_work_is_never_deleted(tmp_path):
+    work = tmp_path / "w"; (work / "ckpt").mkdir(parents=True)
+    (work / "ckpt" / "a.pt").write_bytes(b"real")
+    I.link_checkpoints(work / "ckpt", work)
+    assert (work / "ckpt" / "a.pt").read_bytes() == b"real"

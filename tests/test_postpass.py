@@ -77,3 +77,9 @@ def test_agreement_identical_and_shifted():
     assert r["clips_differing"] == 2
     assert r["event_f1"] == 2 * 1 / (2 + 3)          # only (0,1)~(0.02,1) within 0.2 s collar
     assert abs(r["dice"] - 2 * 1.98 / (2.0 + 2.98)) < 1e-9   # exact interval union, no frame grid
+
+
+def test_write_predictions_creates_missing_output_folder(tmp_path):
+    out = tmp_path / "new" / "dir" / "p.zip"
+    PP.write_predictions({"a": [(0.0, 1.0)], "b": []}, out, ["a", "b"])
+    assert PP.read_predictions(out) == {"a": [(0.0, 1.0)], "b": []}
