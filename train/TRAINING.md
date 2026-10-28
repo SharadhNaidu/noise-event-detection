@@ -2,12 +2,9 @@
 
 Every member was trained with `src/finetune.py`, from pretrained WavLM-base+ (plus BEATs where noted).
 
-**Ground truth for the arguments:** `../member_configs.json`. It holds the full argparse `cfg` stored inside each checkpoint (hon_A, bts_C, bft_S, bts_R, v5_S, v12_ep4). The commands below are the launch lines recovered from session logs. Where a line is truncated, trust the cfg.
+**Ground truth for the arguments:** `configs/members_cfg.json`, the full argparse `cfg` stored inside each checkpoint (hon_A, bts_C, bft_S, bts_R, v5_S, v12_ep4). `python train/cfg_to_cmd.py` turns it into exact, verified launch lines. The lines below are the ones recovered from session logs; where they are truncated, trust the cfg.
 
-Paths in the scripts are the old A100 layout:
-- code in `/root/work/v9/src`
-- data in `INDOML_ROOT=/root/work/indoml` (audio stores = `noise-det-xfer/audio/*` on HF)
-- venv `/root/work/.venv2`
+In this repo every path comes from `src/paths.py` (`INDOML_ROOT`, default `./workdir`); see the README for building the audio stores. During the competition the server layout was `/root/work/v9/src` (code), `INDOML_ROOT=/root/work/indoml` (stores) and `/root/work/.venv2` (venv); only historical.
 
 Always cap threads (`OMP_NUM_THREADS=12`). Uncapped, torch spawned 138 threads and ran 4.6x slower.
 

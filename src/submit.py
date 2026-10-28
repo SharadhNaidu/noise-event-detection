@@ -34,7 +34,7 @@ import model as M         # noqa: E402
 import readout as R       # noqa: E402
 import train as T         # noqa: E402
 
-ART = Path("C:/Users/iamsh/Desktop/detection/artifacts")
+ART = Path(__file__).resolve().parent.parent / "artifacts"
 CKPT = (P.ROOT / "ckpt")
 EXPECTED_CLIPS = 5517
 

@@ -11,3 +11,4 @@ ext/PretrainedSED/resources/*.pt
 *.zip
 !submissions/*.zip
 .pytest_cache/
+artifacts/
