@@ -1,0 +1,14 @@
+# Inference environment (tested: Python 3.10, Windows 11 + RTX 4070 Laptop 8 GB, CUDA 11.8 wheels)
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.4.1+cu118
+torchaudio==2.4.1+cu118
+transformers==4.44.2
+numpy==2.2.6
+scipy==1.15.3
+scikit-learn==1.7.2
+soundfile==0.12.1
+librosa==0.10.2.post1
+einops==0.8.1
+huggingface_hub==0.34.4
+pyyaml==6.0.2
+pytest==8.4.2

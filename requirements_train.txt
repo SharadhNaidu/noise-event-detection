@@ -1,0 +1,15 @@
+# Training environment (as used on the A100 server: Python 3.10, CUDA 11.8 wheels, driver 470 / CUDA 11.4 runtime)
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.4.1+cu118
+torchaudio==2.4.1+cu118
+transformers==4.44.2
+numpy==2.2.6
+scipy==1.15.3
+scikit-learn==1.7.2
+soundfile==0.12.1
+librosa==0.10.2.post1
+einops==0.8.1
+pyarrow==17.0.0
+huggingface_hub==0.34.4
+pyyaml==6.0.2
+pytest==8.4.2
