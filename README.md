@@ -11,6 +11,8 @@ Frame-level sound-event detection of noise events in Indian-language speech (Vaa
 
 **Technical report:** [`docs/technical_report.pdf`](docs/technical_report.pdf) (3 pages, IEEE format; LaTeX source and figure script in `docs/report/`).
 
+**Hugging Face mirror:** [SharadhNaiduTrains/noise-event-detection](https://huggingface.co/SharadhNaiduTrains/noise-event-detection) holds this repository together with all release assets (checkpoints, cached posteriors, habit model) as plain files, with a model card.
+
 ## Contents
 1. [Quick start (inference)](#quick-start-inference)
 2. [Method](#method)
@@ -68,7 +70,7 @@ Every member is a frame model at 20 ms that outputs 8 tracks: "any noise" plus 7
    - **Readouts.** Each route uses a frozen hysteresis readout (`configs/readouts/md02_natural.json`, `ens5_v5w2_ov.json`), then an empty-clip fallback.
    - **Synthetic level filter.** Synthetic events quieter than −16 dB relative to the clip are dropped. The labels mark only *inserted* noise, not breaths already present in the clean speech.
    - **Background extension (`bgext`).** An event of at least 1 s whose dominant category is a long background class (0, 3, 5) is extended while the any-noise posterior stays ≥ 0.30. Two such long events less than 0.5 s apart are joined when the gap itself stays ≥ 0.30.
-   - **Habit full-span.** Some annotators label a persistent background as one event covering the whole clip. A small model (`src/habit.py`: HistGradientBoosting on clip-pooled BEATs tags, recording state and duration) predicts this from the clip. For natural clips with p ≥ 0.5 whose events cover less than 90 % of the clip, the events become one full-span event.
+   - **Habit full-span.** Some annotators label a persistent background as one event covering the whole clip. A small model (`src/habit.py`: HistGradientBoosting on clip-pooled BEATs tags, recording state and duration) predicts this from the clip. For natural clips with p ≥ 0.5 whose events cover less than 90 % of the clip, one full-span event is added; the existing events are kept.
    - **Type-C inner events.** A category run (score ≥ 0.65 for at least 0.3 s, gaps under 0.12 s bridged) is added as its own nested event when it sits inside a live event at least 2× its length whose dominant category is different. The habit full-span event is never a host.
    - **Synthetic edge shift.** Synthetic onsets and offsets move by +4/−4 ms and then +4/−2 ms, clamped to the clip.
 
@@ -149,6 +151,8 @@ The final weights of three ensemble members, **`v12`, `v12s62` and `v5all`**, we
 | synthetic | 2,080 | 0.9986 | 0.9934 |
 | natural | 3,437 | 0.9599 | 0.9556 |
 
+Scored instead with the official scorer (`src/reference_scorer.py`, the uploaded file as reference), which the technical report quotes: all clips F1 0.9844 / Dice 0.9716, natural 0.9661 / 0.9589, synthetic 0.9981 / 0.9925.
+
 Synthetic predictions change only by millisecond edge shifts. Natural predictions move more, because 2 of the 7 natural members are replaced by one checkpoint. The exact leaderboard file is therefore reproduced from the cached posteriors (next section), and live inference is the closest run possible with the surviving weights.
 
 All three can be retrained with the commands in [Training](#training). Seeds are fixed, but bit-exact equality with the lost weights is not guaranteed.
@@ -170,7 +174,7 @@ inner md5 1315f264bb9ed3864db26530ad50d1f9 | expected for tta3 from the publishe
 vs uploaded LB file sub_1016_tta3.zip: clips differing 383/5517, events 13530 vs 13538, event F1 (0.2 s collar) 0.9996, segment Dice 0.9989
 ```
 
-**Why tta3 is not byte-identical to the uploaded file.** The uploaded file was built from TTA posterior caches that were lost with the old machine. The published `*_tta` caches were recomputed on an RTX 4070 from the same checkpoints and code. bf16 kernels differ slightly between GPUs (mean |Δ| ≈ 4e-3 per frame), so a few edges move by one frame. Against the uploaded file the rebuild agrees at event F1 0.9996 and Dice 0.9989.
+**Why tta3 is not byte-identical to the uploaded file.** The uploaded file was built from TTA posterior caches that were lost with the old machine. The published `*_tta` caches were recomputed on an RTX 4070 from the same checkpoints and code. bf16 kernels differ slightly between GPUs (mean |Δ| ≈ 4e-3 per frame), so a few edges move by one frame. Against the uploaded file the rebuild agrees at event F1 0.9996 and Dice 0.9989 (0.2 s collar, pooled Dice). With the official scorer it is F1 0.9996 / Dice 0.9993 (natural 0.9991 / 0.9988, synthetic exact).
 
 **Exact check.** `--stage typec_syn86` runs the same decode chain on the non-TTA caches, which are the originals. It reproduces the competition-time file `sub_1016_typec_syn86` **byte for byte** (md5 `f820fdfd4a94aa0c0fa203fb1b7f1023`). That shows the decode chain itself is exact. tta3 is that file with the TTA posteriors swapped in for hon_A, bft_S and v5_S.
 
@@ -230,10 +234,12 @@ pytest -m data    # model/feature tests; need scripts/download_assets.py (+ chec
 
 ## Score history
 
-| LB | what changed |
-|---|---|
-| 1.5831 | 7-member natural ensemble and 6-member synthetic ensemble, frozen readouts, synthetic level filter |
-| 1.5852 | background extension (`bgext`) + synthetic edge shift +4/−4 ms |
-| 1.5902 | habit full-span model |
-| 1.5907 | type-C inner events in habit clips |
-| **1.5926** | second synthetic shift (+4/−2 ms) + TTA (0 / 0.64 / 1.28 s pads) on hon_A, bft_S, v5_S. **Final.** |
+| LB | natural F1 / Dice | synthetic F1 / Dice | what changed |
+|---|---|---|---|
+| 1.5831 | 0.4834 / 0.7083 | not reported | 7-member natural ensemble and 6-member synthetic ensemble, frozen readouts, synthetic level filter |
+| 1.5852 | 0.4830 / 0.7096 | 0.9925 / 0.9851 | background extension (`bgext`) + synthetic edge shift +4/−4 ms |
+| 1.5902 | 0.4879 / 0.7163 | 0.9925 / 0.9851 | habit full-span model |
+| 1.5907 | 0.4910 / 0.7163 | 0.9925 / 0.9851 | type-C inner events in habit clips |
+| **1.5926** | 0.4936 / 0.7178 | 0.9929 / 0.9845 | second synthetic shift (+4/−2 ms) + TTA (0 / 0.64 / 1.28 s pads) on hon_A, bft_S, v5_S. **Final.** |
+
+Per-route numbers are the leaderboard's own breakdown of each upload.

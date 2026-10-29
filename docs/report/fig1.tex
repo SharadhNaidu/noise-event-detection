@@ -1,42 +1,89 @@
-% Fig. 1: system overview (TikZ, full text width)
-\begin{tikzpicture}[font=\footnotesize, >={Stealth[length=4pt]}, x=0.97cm, y=0.95cm,
-  box/.style={draw=muted, rounded corners=2pt, align=center, inner sep=2pt, line width=0.4pt, minimum height=0.78cm},
-  arr/.style={->, draw=muted, line width=0.55pt},
+% Fig. 1: system overview (TikZ, full text width). Colours are defined in technical_report.tex.
+\begin{tikzpicture}[font=\footnotesize, >={Stealth[length=3.6pt]}, x=0.977cm, y=0.8cm,
+  box/.style={draw=muted!80, rounded corners=2.5pt, align=center, inner sep=2pt, line width=0.45pt, minimum height=0.62cm},
+  arr/.style={->, draw=muted, line width=0.6pt},
+  dim/.style={font=\scriptsize, text=muted, fill=white, inner sep=0.8pt},
   lab/.style={font=\scriptsize\itshape, text=muted, align=center},
-  ttl/.style={font=\footnotesize\bfseries, anchor=west}]
-% (a) member network
-\node[ttl] at (-0.05,4.25) {(a) One ensemble member, 20\,ms frames};
-\node[box, fill=fblue, minimum width=3.45cm] (wav) at (1.75,3.45) {WavLM-Base+, layers 1--4\\768-d};
-\node[box, fill=forange, minimum width=3.45cm] (bea) at (5.45,3.45) {BEATs-strong (optional)\\768-d + 447 AudioSet logits};
-\node[box, fill=fgray, minimum width=7.15cm, minimum height=0.5cm] (fus) at (3.6,2.3) {LayerNorm each, concatenate (1983-d) $\rightarrow$ optional 2-layer Conformer};
-\node[box, fill=fgray, minimum width=7.15cm, minimum height=0.5cm] (gru) at (3.6,1.55) {bidirectional GRU, 2 layers $\times$ 256 per direction};
-\node[box, fill=faqua, minimum width=1.7cm] (h1) at (0.9,0.4) {frame\\8 channels};
-\node[box, fill=faqua, minimum width=1.7cm] (h2) at (2.7,0.4) {clip\\attention pool};
-\node[box, fill=faqua, minimum width=1.7cm] (h3) at (4.5,0.4) {boundary\\signed, $\pm$0.5\,s};
-\node[box, fill=faqua, minimum width=1.7cm] (h4) at (6.3,0.4) {RED latch\\start / end};
-\draw[arr] (wav.south) -- (wav.south |- fus.north);
-\draw[arr] (bea.south) -- (bea.south |- fus.north) node[lab, midway, right] {frozen or tuned};
+  ttl/.style={font=\footnotesize\bfseries, anchor=west},
+  glyph/.style={line width=0.55pt, line join=round}]
+%% ---------------- (a) one member ----------------
+\node[ttl] at (-0.1,4.75) {(a) One ensemble member};
+% input waveform glyph
+\begin{scope}[shift={(3.55,4.2)}]
+  \draw[glyph, draw=ink!70] plot[smooth, samples=90, domain=-1.1:1.1] (\x, {0.17*sin(1900*\x)*exp(-2.2*(\x+0.3)^2) + 0.09*sin(3100*\x)*exp(-6*(\x-0.6)^2)});
+  \node[lab, anchor=west] at (1.2,0) {5\,s crop, 16\,kHz};
+\end{scope}
+\node[box, fill=fblue, minimum width=3.25cm] (wav) at (1.75,3.25) {\textbf{WavLM-Base+}\\layers 1--4 (or 12, mixed)};
+\node[box, fill=forange, minimum width=3.25cm] (bea) at (5.35,3.25) {\textbf{BEATs-strong} (optional)\\frozen or fine-tuned};
+\draw[arr] (3.0,3.98) to[out=-150,in=90] (wav.north);
+\draw[arr] (4.1,3.98) to[out=-30,in=90] (bea.north);
+\node[box, fill=fgray, minimum width=6.95cm] (fus) at (3.55,2.1) {LayerNorm $\oplus$ concat (1983-d) \;$\rightarrow$\; optional Conformer (2 layers)};
+\node[box, fill=fgray, minimum width=6.95cm] (gru) at (3.55,1.25) {bidirectional GRU, 2 layers $\times$ 256 per direction};
+\draw[arr] (wav.south) -- (wav.south |- fus.north) node[dim, midway] {$T\!\times\!768$};
+\draw[arr] (bea.south) -- (bea.south |- fus.north) node[dim, midway] {$T\!\times\!(768{+}447)$};
 \draw[arr] (fus) -- (gru);
+% heads
+\foreach \x/\n/\t in {0.85/h1/frame, 2.65/h2/clip, 4.45/h3/boundary, 6.25/h4/RED latch}
+  \node[box, fill=faqua, minimum width=1.62cm, minimum height=0.5cm] (\n) at (\x,0.35) {\t};
 \foreach \n in {h1,h2,h3,h4} \draw[arr] (gru.south -| \n) -- (\n.north);
-\draw[muted!60, line width=0.4pt] (7.75,-0.1) -- (7.75,4.4);
-% (b) inference
-\node[ttl] at (7.95,4.25) {(b) Inference on a test clip};
-\node[box, fill=fgray, minimum width=1.75cm] (clip) at (9.0,3.45) {test clip\\16\,kHz mono};
-\node[box, fill=fgray, minimum width=1.75cm, minimum height=1.25cm] (route) at (9.0,1.4) {route:\\peak at int16\\full scale?};
-\draw[arr] (clip) -- (route);
-\node[lab] at (11.55,3.55) {ensemble mean};
-\node[lab] at (14.15,3.55) {hysteresis readout};
-\node[lab] at (16.75,3.55) {post-pass};
-\node[font=\scriptsize\bfseries, text=cblue, anchor=west] at (10.3,3.1) {yes $\rightarrow$ natural: 3{,}437 clips};
-\node[box, fill=fblue, minimum width=2.35cm] (n1) at (11.55,2.5) {7 members,\\3 with 3-shift TTA};
-\node[box, fill=fgray, minimum width=2.35cm] (n2) at (14.15,2.5) {hold $0.6$, peak $0.7$\\min.\ 0.20\,s, refine};
-\node[box, fill=faqua, minimum width=2.35cm] (n3) at (16.75,2.5) {bg.\ extension, habit\\span, nested events};
-\node[font=\scriptsize\bfseries, text=corange, anchor=west] at (10.3,1.15) {no $\rightarrow$ synthetic: 2{,}080 clips};
-\node[box, fill=forange, minimum width=2.35cm] (s1) at (11.55,0.55) {6 members,\\no TTA};
-\node[box, fill=fgray, minimum width=2.35cm] (s2) at (14.15,0.55) {hold $0.6$, peak $0.7$\\min.\ 0.08\,s, refine};
-\node[box, fill=faqua, minimum width=2.35cm] (s3) at (16.75,0.55) {level filter $-$16\,dB,\\edge shift};
-\draw[arr] (route.east) -- ++(0.25,0) |- (n1.west);
-\draw[arr] (route.east) -- ++(0.25,0) |- (s1.west);
+% head output glyphs
+\begin{scope}[shift={(0.85,-0.38)}]   % frame presence, 8 tracks (one shown)
+  \draw[muted!50, line width=0.3pt] (-0.7,-0.2) -- (0.7,-0.2);
+  \draw[glyph, draw=cblue] plot[smooth, tension=0.5] coordinates {(-0.7,-0.18) (-0.42,-0.15) (-0.28,0.0) (-0.15,0.13) (0.05,0.1) (0.22,0.14) (0.36,-0.02) (0.5,-0.16) (0.7,-0.18)};
+\end{scope}
+\begin{scope}[shift={(2.65,-0.38)}]   % clip logit
+  \draw[muted!50, line width=0.3pt] (-0.7,-0.2) -- (0.7,-0.2);
+  \fill[cblue!80] (-0.09,-0.2) rectangle (0.09,0.15);
+\end{scope}
+\begin{scope}[shift={(4.45,-0.38)}]   % signed distance to nearest edge
+  \draw[muted!50, line width=0.3pt] (-0.7,-0.02) -- (0.7,-0.02);
+  \draw[glyph, draw=corange] (-0.7,-0.2) -- (-0.25,0.16) (-0.25,-0.2) -- (0.3,0.16) (0.3,-0.2) -- (0.7,0.1);
+\end{scope}
+\begin{scope}[shift={(6.25,-0.38)}]   % latched presence
+  \draw[muted!50, line width=0.3pt] (-0.7,-0.2) -- (0.7,-0.2);
+  \draw[glyph, draw=caqua] (-0.7,-0.2) -- (-0.3,-0.2) -- (-0.3,0.16) -- (0.35,0.16) -- (0.35,-0.2) -- (0.7,-0.2);
+  \fill[ink] (-0.3,0.16) circle (0.9pt) (0.35,-0.2) circle (0.9pt);
+\end{scope}
+\node[lab, anchor=north] at (3.55,-0.66) {presence $\cdot$ clip score $\cdot$ signed distance to edge ($\pm$0.5\,s) $\cdot$ start/end latch};
+\draw[muted!45, line width=0.4pt] (7.55,-0.95) -- (7.55,4.9);
+%% ---------------- (b) inference ----------------
+\node[ttl] at (7.75,4.75) {(b) Inference};
+\begin{scope}[shift={(8.75,4.15)}]
+  \draw[glyph, draw=ink!70] plot[smooth, samples=80, domain=-0.75:0.75] (\x, {0.15*sin(2300*\x)*exp(-3*(\x-0.15)^2)});
+  \node[lab] at (0,-0.36) {test clip};
+\end{scope}
+\node[draw=muted!80, fill=fgray, diamond, aspect=1.5, inner sep=0.5pt, align=center, font=\scriptsize, line width=0.45pt] (route) at (8.75,2.2) {peak at\\int16 full\\scale?};
+\draw[arr] (8.75,3.6) -- (route.north);
+% lane geometry
+\def\yn{2.95} \def\ys{0.6}
+
+
+\draw[arr] (route.north east) -- ++(0.3,0.3) |- (10.05,\yn) node[pos=0.15, left, font=\scriptsize, text=muted] {yes};
+\draw[arr] (route.south east) -- ++(0.3,-0.3) |- (10.05,\ys) node[pos=0.15, left, font=\scriptsize, text=muted] {no};
+% ensemble boxes
+\node[box, fill=fblue, minimum width=2.0cm, minimum height=1.05cm, anchor=west] (n1) at (10.05,\yn) {mean of\\7 members\\\scriptsize 3 with 3-shift TTA};
+\node[box, fill=forange, minimum width=2.0cm, minimum height=1.05cm, anchor=west] (s1) at (10.05,\ys) {mean of\\6 members\\\scriptsize no TTA};
+\node[font=\scriptsize\bfseries, text=cblue, anchor=south west, inner sep=1pt] at ([yshift=2pt]n1.north west) {natural recordings $\cdot$ 3{,}437 clips};
+\node[font=\scriptsize\bfseries, text=corange, anchor=south west, inner sep=1pt] at ([yshift=2pt]s1.north west) {synthetic mixtures $\cdot$ 2{,}080 clips};
+% readout boxes with a hysteresis glyph
+\foreach \y/\n/\md in {\yn/n2/0.20, \ys/s2/0.08} {
+  \node[box, fill=white, minimum width=2.75cm, minimum height=1.05cm, anchor=west] (\n) at (12.45,\y) {};
+  \begin{scope}[shift={(12.6,\y-0.24)}]
+    \fill[caqua!22] (0.62,0) rectangle (1.78,0.72);
+    \draw[glyph, draw=cblue] plot[smooth, tension=0.6] coordinates {(0,0.08) (0.35,0.2) (0.6,0.47) (0.85,0.66) (1.05,0.58) (1.25,0.66) (1.55,0.6) (1.75,0.47) (2.0,0.25) (2.15,0.38) (2.3,0.12)};
+    \draw[corange, densely dashed, line width=0.45pt] (0,0.47) -- (2.45,0.47) node[right, font=\scriptsize, text=ink, inner sep=1pt, yshift=-2pt] {.6};
+    \draw[ink!80, densely dashed, line width=0.45pt] (0,0.6) -- (2.45,0.6) node[right, font=\scriptsize, text=ink, inner sep=1pt, yshift=2pt] {.7};
+    \draw[muted!60, line width=0.3pt] (0,0) -- (2.45,0);
+  \end{scope}
+  \node[font=\scriptsize, text=muted, anchor=south, inner sep=1pt] at (13.75,\y-0.52) {min.\ \md\,s, refine};
+}
+\node[lab] at (11.05,\yn+1.32) {ensemble};
+\node[lab] at (13.82,\yn+1.32) {hysteresis readout};
+\node[lab] at (16.6,\yn+1.32) {post-pass};
+% post-pass boxes
+\node[box, fill=faqua, minimum width=2.4cm, minimum height=1.05cm, anchor=west, align=left, font=\scriptsize] (n3) at (15.4,\yn) {1 background extension\\2 habit full-span event\\3 nested (type-C) events};
+\node[box, fill=faqua, minimum width=2.4cm, minimum height=1.05cm, anchor=west, align=left, font=\scriptsize] (s3) at (15.4,\ys) {1 level filter ($-$16\,dB)\\2 edge shift (+8/$-$6\,ms)};
 \draw[arr] (n1) -- (n2); \draw[arr] (n2) -- (n3);
 \draw[arr] (s1) -- (s2); \draw[arr] (s2) -- (s3);
+\node[lab, anchor=north] at (13.82,-0.18) {event = maximal run with $p\geq0.6$ that reaches $p\geq0.7$ (shaded)};
 \end{tikzpicture}
