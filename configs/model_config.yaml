@@ -1,0 +1,47 @@
+# Inference configuration of the final system (leaderboard 1.5926). Read by src/members.py (ensemble)
+# and src/postpass.py (postpass, readouts); every decode constant of inference/infer.py is here.
+#
+# ensemble   member lists per route; a repeated tag weights that member twice; <tag>_tta = test-time
+#            augmentation (zero pads of 0 / 0.64 / 1.28 s). The final weights of v12, v12s62 and v5all were
+#            lost: live inference uses `substitute`, the exact rebuild (reproduce/rebuild_lb.py) their cached
+#            test posteriors. `checkpoints` = the files inference needs in checkpoints/.
+# postpass   fs = frame hop (s); fallback_q = empty-clip fallback; level_db = synthetic level filter;
+#            bgext / habit / typec = natural post-pass stages; syn_shift = synthetic edge shifts (s).
+# readouts   hysteresis readouts per route: an event is a run with p >= thr_on that reaches thr_off;
+#            merge_gap and min_dur in s; refine = boundary-head refine radius (s); overlay = human-non-speech
+#            channel (ch 7) runs added inside longer events. `natural` is per population (kind perpop).
+ensemble:
+  natural: [hon_A_tta, bts_C, bft_S_tta, bts_R, v12, v5_S_tta, v12s62]
+  synthetic: [hon_A, bts_C, bft_S, bts_R, v5all, v5all]
+  tta: [hon_A, bft_S, v5_S]
+  substitute: {v12: v12_ep4, v12s62: v12_ep4, v5all: v5_S}
+  checkpoints: [hon_A, bts_C, bft_S, bts_R, v5_S, v12_ep4]
+postpass:
+  fs: 0.02
+  fallback_q: 0.7
+  level_db: -16.0
+  bgext:
+    cats: [0, 3, 5]
+    low: 0.3
+    bridge: 0.5
+    minlen: 1.0
+  habit: {thr: 0.5, max_cover: 0.9}
+  typec: {theta: 0.65, minlen: 0.3, hmult: 2.0, gap: 0.12}
+  syn_shift:
+  - {'on': 0.004, 'off': -0.004, clamp: true}
+  - {'on': 0.004, 'off': -0.002, clamp: false}
+  tta_pads: [0.0, 0.64, 1.28]
+readouts:
+  natural:
+    kind: perpop
+    natural: {kind: asym, thr_on: 0.6, thr_off: 0.7, min_dur: 0.2, merge_gap: 0.06, refine: 0.2}
+    synthetic: {kind: asym, thr_on: 0.6, thr_off: 0.7, min_dur: 0.08, merge_gap: 0.06, refine: 0.3}
+    overlay: {ch: 7, thr: 0.55, ratio: 4.0, natural_only: true}
+  synthetic:
+    kind: asym
+    thr_on: 0.6
+    thr_off: 0.7
+    min_dur: 0.08
+    merge_gap: 0.06
+    refine: 0.3
+    overlay: {ch: 7, thr: 0.6, ratio: 3.0, natural_only: true}

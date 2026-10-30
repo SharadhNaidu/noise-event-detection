@@ -6,6 +6,7 @@ workdir/
 *_ext/
 checkpoints/*.pt
 checkpoints/*.pkl
+!checkpoints/habit_model.pkl
 posteriors/
 ext/PretrainedSED/resources/*.pt
 *.zip

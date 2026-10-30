@@ -1,8 +1,8 @@
 """Per-member frame posteriors on an audio store, plain or with test-time augmentation (TTA)."""
-import json
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 import audiostore as A
 import finetune as FT
@@ -13,7 +13,9 @@ TTA_PADS = (0.0, 0.64, 1.28)
 
 
 def load_members(path=None):
-    return json.load(open(path or REPO / "configs" / "members.json"))
+    """The `ensemble` section of configs/model_config.yaml."""
+    with open(path or REPO / "configs" / "model_config.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)["ensemble"]
 
 
 def posteriors(tag, store, tta=False, device="cuda", batch=8, ids=None):

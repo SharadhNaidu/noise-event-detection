@@ -6,13 +6,14 @@ Order (per clip, routed by submit_ens.natural_by_peak):
   natural  : bgext (extend long background events while p0 >= low) -> habit full-span event -> type-C inner events
   synthetic: two-step edge shift (+4/-4 ms clamped, then +4/-2 ms)
 Ported verbatim from the scripts that built the uploaded files (build_bg.py, build_syn.py, build_habit.py,
-build_typec.py, build_syn86.py, build_chain.py); configs/postpass.json holds every constant."""
+build_typec.py, build_syn86.py, build_chain.py); configs/model_config.yaml holds every constant."""
 import hashlib
 import json
 import zipfile
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 import ens_gate as E
 import postproc
@@ -23,13 +24,14 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def load_cfg(path=None):
-    return json.load(open(path or REPO / "configs" / "postpass.json"))
+    """The `postpass` section of configs/model_config.yaml, with the two `readouts` under cfg["readouts"]."""
+    with open(path or REPO / "configs" / "model_config.yaml", encoding="utf-8") as f:
+        conf = yaml.safe_load(f)
+    return {**conf["postpass"], "readouts": conf["readouts"]}
 
 
 def load_readouts(cfg):
-    nat = json.load(open(REPO / cfg["readouts"]["natural"]))
-    syn = json.load(open(REPO / cfg["readouts"]["synthetic"]))["readout"]
-    return nat, syn
+    return cfg["readouts"]["natural"], cfg["readouts"]["synthetic"]
 
 
 def r3(evs):

@@ -2,7 +2,7 @@
 
 Every member was trained with `src/finetune.py`, from pretrained WavLM-base+ (plus BEATs where noted).
 
-**Ground truth for the arguments:** `configs/members_cfg.json`, the full argparse `cfg` stored inside each checkpoint (hon_A, bts_C, bft_S, bts_R, v5_S, v12_ep4). `python train/cfg_to_cmd.py` turns it into exact, verified launch lines. The lines below are the ones recovered from session logs; where they are truncated, trust the cfg.
+**Ground truth for the arguments:** `train/config.yaml`, the full argparse `cfg` stored inside each checkpoint (hon_A, bts_C, bft_S, bts_R, v5_S, v12_ep4), plus the derived recipes of v12, v12s62 and v5all. `python train/train.py --print` turns it into exact, verified launch lines; `--member NAME` runs one. The lines below are the ones recovered from session logs; where they are truncated, trust the cfg.
 
 In this repo every path comes from `src/paths.py` (`INDOML_ROOT`, default `./workdir`); see the README for building the audio stores. During the competition the server layout was `/root/work/v9/src` (code), `INDOML_ROOT=/root/work/indoml` (stores) and `/root/work/.venv2` (venv); only historical.
 

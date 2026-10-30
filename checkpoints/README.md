@@ -1,8 +1,10 @@
 # checkpoints/ and posteriors/
 
-The weights are not stored in git. They are assets of the GitHub release
-[v1.0](https://github.com/SharadhNaidu/noise-event-detection/releases/tag/v1.0).
-Fetch and verify them with:
+`habit_model.pkl` (1.5 MB) is stored here in git. The six member checkpoints (162-760 MB each) exceed GitHub's
+100 MB file limit, so they are assets of the GitHub release
+[v1.0](https://github.com/SharadhNaidu/noise-event-detection/releases/tag/v1.0); the Hugging Face mirror
+[SharadhNaiduTrains/noise-event-detection](https://huggingface.co/SharadhNaiduTrains/noise-event-detection/tree/main/checkpoints)
+stores them in this folder. `scripts/run_inference.sh` fetches and verifies them on first use, or by hand:
 
 ```bash
 python scripts/download_assets.py --what checkpoints   # -> checkpoints/*.pt, checkpoints/habit_model.pkl

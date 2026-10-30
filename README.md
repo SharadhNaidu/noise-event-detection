@@ -64,12 +64,12 @@ Times are in seconds, rounded to 3 decimals. Every input clip gets a line. The d
 Every member is a frame model at 20 ms that outputs 8 tracks: "any noise" plus 7 noise categories. Members are fine-tuned from `microsoft/wavlm-base-plus` (4 or 12 transformer layers). Some also use BEATs AudioSet-strong features, either frozen ("bts") or fine-tuned ("bft"). They are trained with `src/finetune.py` on 5 s crops.
 
 1. **Routing.** The test set mixes real ("natural") recordings and synthetic mixtures. Natural clips peak at int16 full scale (≥ 32765), synthetic clips at 0.99 (`submit_ens.natural_by_peak`). The rule is exact on validation and test as released; audio that was re-encoded or level-normalised would need a different router.
-2. **Ensemble.** Each route averages the member posteriors with equal weight (`configs/members.json`):
+2. **Ensemble.** Each route averages the member posteriors with equal weight (`ensemble` in `configs/model_config.yaml`):
    - natural: `hon_A (TTA), bts_C, bft_S (TTA), bts_R, v12, v5_S (TTA), v12s62`
    - synthetic: `hon_A, bts_C, bft_S, bts_R, v5all, v5all`
    - **TTA** means the clip is also run zero-padded by 0.64 s and by 1.28 s on both sides. This shifts the 5 s crop grid and gives the clip edges context. The pads are trimmed off and the three outputs averaged (`finetune.tta_posteriors`).
-3. **Decoding** (`src/postpass.py`; constants in `configs/postpass.json`):
-   - **Readouts.** Each route uses a frozen hysteresis readout (`configs/readouts/md02_natural.json`, `ens5_v5w2_ov.json`), then an empty-clip fallback.
+3. **Decoding** (`src/postpass.py`; constants under `postpass` in `configs/model_config.yaml`):
+   - **Readouts.** Each route uses a frozen hysteresis readout (`readouts` in `configs/model_config.yaml`), then an empty-clip fallback.
    - **Synthetic level filter.** Synthetic events quieter than −16 dB relative to the clip are dropped. The labels mark only *inserted* noise, not breaths already present in the clean speech.
    - **Background extension (`bgext`).** An event of at least 1 s whose dominant category is a long background class (0, 3, 5) is extended while the any-noise posterior stays ≥ 0.30. Any two events of at least 1 s that are less than 0.5 s apart are joined when the gap itself stays ≥ 0.30.
    - **Habit full-span.** Some annotators label a persistent background as one event covering the whole clip. A small model (`src/habit.py`: HistGradientBoosting on clip-pooled BEATs tags, recording state and duration) predicts this from the clip. For natural clips with p ≥ 0.5 where no single event covers 90 % of the clip, one full-span event is added; the existing events are kept.
@@ -78,29 +78,47 @@ Every member is a frame model at 20 ms that outputs 8 tracks: "any noise" plus 7
 
 ## Repository layout
 
+The layout follows the organisers' suggested structure:
+
 ```
-inference/infer.py           wav folder/zip -> predictions.zip (live models; entry point for evaluation)
-scripts/run_inference.sh     one-command inference (downloads assets, then infer.py)
-scripts/download_assets.py   fetch + md5-verify checkpoints / posteriors / BEATs weights
-scripts/build_audio_store.py wav folder/zip -> 16 kHz int16 store (the format every src/ module reads)
-scripts/make_silver_long.py  silver_audio -> silver_long training store (clips with an event >= 1.5 s)
-md5.txt                      md5 of every release asset (checkpoints, posteriors); used by download_assets.py
-scripts/tta_posteriors.py    per-member posteriors (plain or TTA) on a store -> post8_<store>_<tag>[_tta].pkl
-reproduce/rebuild_lb.py      cached test posteriors -> the leaderboard file (md5-checked)
-reproduce/habit_test_shipped.json  the 124 natural test clips the shipped habit model turned full-span
-src/                         training + model + decoding library. The final system uses finetune.py, model.py, gate.py, submit_ft.py,
-                             submit_ens.py, members.py, postpass.py, habit.py, extract_*.py, synth.py, make_valtune.py and their imports; other
-                             modules (e.g. train_epn*, boxdec, densedec, joint_interval) are experiments that did not enter it
-src/paths.py                 $INDOML_ROOT (default ./workdir): audio stores, features, checkpoints; src/data.py reads $INDOML_DATA (default ./data)
-configs/members.json         ensemble lists, TTA members, lost-checkpoint substitutes
-configs/members_cfg.json     full training argparse config of every shipped checkpoint
-configs/postpass.json        all decode constants;  configs/readouts/*.json  the two frozen readouts
-train/                       training launchers, cfg_to_cmd.py (exact launch lines), train_habit.py, TRAINING.md
-ext/PretrainedSED/           vendored BEATs code from fschmid56/PretrainedSED (MIT; weights downloaded separately)
-tests/                       pytest suite
-submissions/sub_1016_tta3.zip  the file scored 1.5926 on the leaderboard
-docs/technical_report.pdf    the 3-page technical report (source: docs/report/, build with pdflatex x2)
+noise-event-detection/
+├── README.md
+├── LICENSE                         MIT
+├── requirements_train.txt          training environment
+├── requirements_inference.txt      inference environment (requirements_inference.lock.txt: every package, as tested)
+├── train/
+│   ├── train.py                    train a member (or the habit model) with its exact submitted configuration
+│   ├── config.yaml                 training configuration of every member (stored in each checkpoint)
+│   ├── utils.py                    config -> verified src/finetune.py command
+│   ├── train_habit.py              habit model (called by train.py --habit)
+│   ├── member_go_b.sh, test_posteriors.sh   server launchers used during the competition
+│   └── TRAINING.md                 where and when each member was trained
+├── inference/
+│   ├── infer.py                    wav folder or zip -> predictions.zip (entry point for evaluation)
+│   └── utils.py                    wav input -> 16 kHz audio store, checkpoint linking
+├── checkpoints/                    final model checkpoints: habit_model.pkl in git; the 6 member .pt files
+│                                   (162-760 MB each, over GitHub's 100 MB limit) are fetched from release v1.0
+│                                   by scripts/download_assets.py (md5 in md5.txt); the HF mirror stores them here
+├── configs/
+│   └── model_config.yaml           inference configuration: ensemble, post-pass constants, readouts
+├── scripts/
+│   ├── run_inference.sh            one-command inference (verifies assets, then inference/infer.py)
+│   ├── download_assets.py          fetch + md5-verify checkpoints / posteriors / BEATs weights
+│   ├── build_audio_store.py        wav folder/zip -> 16 kHz int16 store (the format every src/ module reads)
+│   ├── make_silver_long.py         silver_audio -> silver_long training store
+│   └── tta_posteriors.py           per-member posteriors (plain or TTA) on a store
+├── docs/
+│   ├── technical_report.pdf        the 3-page technical report
+│   └── report/                     its LaTeX source and figure script (pdflatex x2)
+├── src/                            model, training and decoding library used by train/ and inference/
+├── reproduce/                      rebuild_lb.py: cached test posteriors -> the exact leaderboard file
+├── ext/PretrainedSED/              vendored BEATs code from fschmid56/PretrainedSED (MIT; weights downloaded)
+├── tests/                          pytest suite
+├── submissions/sub_1016_tta3.zip   the file scored 1.5926 on the leaderboard
+└── md5.txt                         md5 of every release asset
 ```
+
+In `src/`, the final system uses `finetune.py`, `model.py`, `train.py` (readout and decoding helpers, imported as `train`), `gate.py`, `members.py`, `submit_ft.py`, `submit_ens.py`, `postpass.py`, `habit.py`, `extract_*.py`, `synth.py`, `make_valtune.py` and their imports. Other modules (e.g. `train_epn*`, `boxdec`, `densedec`, `joint_interval`) are experiments that did not enter it. `src/paths.py` reads `$INDOML_ROOT` (default `./workdir`: audio stores, features, checkpoints) and `src/data.py` reads `$INDOML_DATA` (default `./data`).
 
 ## Environment and hardware
 
@@ -109,7 +127,7 @@ docs/technical_report.pdf    the 3-page technical report (source: docs/report/, 
 | Python | 3.10 (3.10.21 tested) |
 | PyTorch | 2.4.1 + CUDA 11.8 wheels (`--extra-index-url https://download.pytorch.org/whl/cu118`) |
 | Key packages | transformers 4.44.2, numpy 2.2.6, scikit-learn 1.7.2 (the habit-model pickle needs this exact version), scipy 1.15.3, librosa 0.10.2.post1, soundfile 0.12.1, einops 0.8.1, huggingface_hub 0.34.4. Pinned in `requirements_*.txt`; `requirements_inference.lock.txt` freezes every package of the tested inference environment |
-| Training GPUs | **NVIDIA A100** cloud notebook (bft_S, v5_S, v12, v12s62, v5all; exact memory variant not recorded) and **NVIDIA GeForce RTX 4070 Laptop, 8 GB** (hon_A, bts_C, bts_R). Later work ran on an **A100 MIG 3g.20gb slice (20 GB)** with 15 CPU cores and 16 GB RAM, driver 470 (CUDA 11.4 runtime; cu118 wheels run on it, cu121+ do not) |
+| Training GPUs | **NVIDIA A100** cloud notebook (bft_S, v5_S, v12, v12s62, v5all; 29 GB of GPU memory available) and **NVIDIA GeForce RTX 4070 Laptop, 8 GB** (hon_A, bts_C, bts_R). Later work ran on an **A100 MIG 3g.20gb slice (20 GB)** with 15 CPU cores and 16 GB RAM, driver 470 (CUDA 11.4 runtime; cu118 wheels run on it, cu121+ do not) |
 | Training CUDA | 11.8 wheels (driver 470 / CUDA 11.4 on the server, driver 561.09 on the laptop) |
 | Inference (tested) | Windows 11, Intel i9-14900HX, 32 GB RAM, RTX 4070 Laptop 8 GB, driver 561.09, CUDA 11.8 wheels |
 | Precision | bf16 autocast on CUDA, fp32 on CPU |
@@ -213,21 +231,24 @@ The `gold_audio` and `val_audio` commands are the verbatim launch lines. The oth
 python extract_beats.py gold_audio synth_aug synth_mask_t valtune_audio silver_long val_audio test_audio
 ```
 
-**3. Members.** Each checkpoint stores its full argparse config, which is also kept in `configs/members_cfg.json`. `train/cfg_to_cmd.py` prints the exact `finetune.py` command for every member and checks that it re-parses to the stored config:
+**3. Members.** `train/config.yaml` holds the full argparse config stored inside each checkpoint, plus the recipes of the three lost members (`v12`, `v12s62`, `v5all`). `train/train.py` turns an entry into the exact `src/finetune.py` command, checks that it re-parses to the config, and runs it:
 
 ```bash
-python train/cfg_to_cmd.py            # all members; run the printed lines from src/
+python train/train.py --member hon_A              # train one member: hon_A bts_C bft_S bts_R v5_S v12_ep4 v12 v12s62 v5all
+python train/train.py --member hon_A --dry-run    # only print the verified command
+python train/train.py --print                     # the commands of every member
+python train/train.py --member v5_S -- --workers 4   # extra finetune.py flags after -- (the last value wins)
 ```
-For example (hon_A):
+For example, hon_A runs:
 ```bash
 cd src && python finetune.py --train-stores gold_audio synth_aug synth_mask_t valtune_audio silver_long --tag hon_A \
   --enc-layers 4 --batch 6 --accum 3 --no-boundary-stores silver_long --p-center 0.0 --silver-w 0.5 --workers 0
 ```
-`train/TRAINING.md` records where and when each member was launched, along with the server launchers (`member_go_b.sh`) used for `v12`, `v12s62` and `v5all`. For `v12s62` use `--seed 62`, and for `v5all` the v5_S line with `valall_audio` in place of `valtune_audio`. Checkpoints are written to `$INDOML_ROOT/ckpt/<tag>.pt`.
+Checkpoints are written to `$INDOML_ROOT/ckpt/<tag>.pt`. `v12_ep4` is the v12 run; the shipped file is its epoch-4 snapshot (`<tag>_ep4.pt`). `train/TRAINING.md` records where and when each member was launched, with the server launchers used for `v12`, `v12s62` and `v5all`.
 
 **4. Habit model.**
 ```bash
-python train/train_habit.py --out checkpoints/habit_model.pkl
+python train/train.py --habit --out checkpoints/habit_model.pkl      # runs train/train_habit.py
 ```
 This trains on gold plus the TUNE half of validation and reports AUC on the held-out DECIDE half. Expected: gold hold-out AUC ≈ 0.79, DECIDE AUC ≈ 0.73.
 
@@ -255,3 +276,7 @@ pytest -m data    # model/feature tests; need scripts/download_assets.py (+ chec
 | **1.5926** | 0.4936 / 0.7178 | 0.9929 / 0.9845 | second synthetic shift (+4/−2 ms) + TTA (0 / 0.64 / 1.28 s pads) on hon_A, bft_S, v5_S. **Final.** |
 
 Per-route numbers are the leaderboard's own breakdown of each upload.
+
+## License
+
+The code in this repository is released under the [MIT License](LICENSE). The vendored `ext/PretrainedSED/` code keeps its own MIT licence, the BEATs weights are under their authors' terms, and the VAANI noise-event data is CC-BY-4.0.

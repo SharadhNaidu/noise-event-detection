@@ -1,5 +1,4 @@
 """Input handling of inference/infer.py: clip ids, wav decoding, zip/folder input, member substitution table."""
-import json
 import sys
 import zipfile
 from pathlib import Path
@@ -13,6 +12,8 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "inference"))
 import audiostore as A  # noqa: E402
 import infer as I        # noqa: E402
+sys.path.insert(0, str(ROOT))
+from inference import utils as U  # noqa: E402
 
 
 def _wav(path, sr=16000, ch=1, sec=1.0, amp=0.5):
@@ -70,7 +71,8 @@ def test_full_scale_natural_routes_natural(tmp_path):
 
 
 def test_member_table_is_consistent():
-    m = json.load(open(ROOT / "configs" / "members.json"))
+    import members as M
+    m = M.load_members()
     assert m["natural"] == ["hon_A_tta", "bts_C", "bft_S_tta", "bts_R", "v12", "v5_S_tta", "v12s62"]
     assert m["synthetic"] == ["hon_A", "bts_C", "bft_S", "bts_R", "v5all", "v5all"]
     assert m["substitute"] == {"v12": "v12_ep4", "v12s62": "v12_ep4", "v5all": "v5_S"}
@@ -79,12 +81,12 @@ def test_member_table_is_consistent():
 
 def test_missing_input_path_is_named(tmp_path):
     with pytest.raises(FileNotFoundError, match="does not exist"):
-        I._wav_sources(tmp_path / "nope")
+        U._wav_sources(tmp_path / "nope")
 
 
 def test_empty_folder_rejected(tmp_path):
     with pytest.raises(ValueError, match="no .wav files"):
-        I._wav_sources(tmp_path)
+        U._wav_sources(tmp_path)
 
 
 def test_corrupt_wav_becomes_empty_clip_not_a_crash(tmp_path):
