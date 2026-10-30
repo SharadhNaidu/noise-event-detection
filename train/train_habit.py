@@ -1,4 +1,7 @@
-"""Train the labelling-habit model (src/habit.py) exactly as shipped on 2026-10-15.
+"""Train the labelling-habit model (src/habit.py) with the recipe shipped on 2026-10-15.
+
+The original pickle was lost; checkpoints/habit_model.pkl is this script's retrain, which agrees
+with the shipped test decisions on 98.8 % of natural clips (reproduce/habit_test_shipped.json).
 
     python train/train_habit.py [--out checkpoints/habit_model.pkl] [--device cuda]
 

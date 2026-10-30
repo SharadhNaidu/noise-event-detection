@@ -54,7 +54,7 @@ def main():
     tune, decide = SP.split_by_speaker(list(refs), frac=0.5, seed=42)
     keep = set({"tune": tune, "decide": decide, "all": list(refs)}[a.half])
 
-    z = zipfile.ZipFile(REPO / "data" / "validation.zip")
+    z = zipfile.ZipFile(D.VAL_ZIP)
     paths = {os.path.basename(n)[:-4]: n for n in z.namelist()
              if n.endswith(".wav") and "__MACOSX" not in n
              and "syntheticCleanRefAudio/" not in n}

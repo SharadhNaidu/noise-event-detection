@@ -1,7 +1,7 @@
 """Figure 2 of the technical report (vector PDF, IEEE column width 3.45 in).
 
     python docs/report/make_figs.py          # -> docs/report/fig/miss_causes.pdf
-Numbers: the DECIDE error anatomy of missed natural reference events (report, Section IV)."""
+Numbers: the DECIDE error anatomy of missed natural reference events (report, Section III)."""
 from pathlib import Path
 
 import matplotlib
@@ -27,9 +27,24 @@ def miss_causes():
     for name, v, c, tc in parts:
         ax.barh(0, v, left=left, height=0.9, color=c, edgecolor="white", linewidth=1.2)
         if name:
-            ax.text(left + 1.2, 0.0, f"{v}%", ha="left", va="center", fontsize=8.5, color=tc, fontweight="bold")
-            ax.text(left + 10.3, 0.0, name, ha="left", va="center", fontsize=6.8, color=tc, linespacing=0.95)
+            if v < 25:                          # narrow segment: percentage above a one-line name
+                ax.text(left + 0.9, 0.17, f"{v}%", ha="left", va="center", fontsize=8.5, color=tc, fontweight="bold")
+                ax.text(left + 0.9, -0.17, name.replace("\n", " "), ha="left", va="center", fontsize=6.0, color=tc)
+            else:
+                ax.text(left + 1.2, 0.0, f"{v}%", ha="left", va="center", fontsize=8.5, color=tc, fontweight="bold")
+                ax.text(left + 10.3, 0.0, name, ha="left", va="center", fontsize=6.8, color=tc, linespacing=0.95)
         left += v
+    fig.canvas.draw()                           # fail loudly if any label spills out of its segment
+    r = fig.canvas.get_renderer()
+    edges, x = [], 0
+    for _, v, _, _ in parts:
+        x += v
+        edges.append(ax.transData.transform((x, 0))[0])
+    for t in ax.texts:
+        x0 = t.get_window_extent(r).x0
+        seg = sum(e <= x0 for e in edges)
+        if seg < len(parts) and t.get_window_extent(r).x1 > edges[seg] - 2:
+            raise SystemExit(f"label {t.get_text()!r} overflows its segment ({t.get_window_extent(r).x1:.1f} > {edges[seg]:.1f}, {edges})")
     ax.text(100.8, 0, "other\n4%", ha="left", va="center", fontsize=5.8, color=MUTED, linespacing=0.9)
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.46, 0.46)

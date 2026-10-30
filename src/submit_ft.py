@@ -47,7 +47,7 @@ def write_zip(preds, out, want):
         raise SystemExit(
             f"clip_id mismatch: {len(want)} expected, {len(got)} produced. "
             f"missing e.g. {miss}; unexpected e.g. {extra}")
-    print(f"  clip_ids match the test set exactly ({len(want):,})")
+    print(f"  clip_ids match the input clips exactly ({len(want):,})")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = []

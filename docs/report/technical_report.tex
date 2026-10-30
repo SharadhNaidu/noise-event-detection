@@ -10,6 +10,7 @@
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,fit,calc,shapes.geometric}
 \usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={Annotation-Aware WavLM Ensembles for Noise Event Detection in Indian Speech}, pdfauthor={Sharadh Naidu}}
 \usepackage{cite}
 
 \definecolor{ink}{HTML}{0B0B0B}
@@ -37,7 +38,7 @@ sharadhanaidu@rvu.edu.in}
 \maketitle
 
 \begin{abstract}
-Track 1 asks for the onset and offset of every non-speech noise event in Indian-language speech and scores event-level F1 plus segment-level Dice. We train frame-level taggers of six designs on 20\,ms frames. Each combines WavLM-Base+ (truncated to four layers, or all twelve with a learned layer mix) with an optional AudioSet-strong BEATs stream, a bidirectional GRU, and heads for frame presence, clip presence, signed distance to the nearest boundary and, optionally, latched start/end states. The test set mixes field recordings with synthetic mixtures, which a waveform-peak rule separates (exactly, on validation), so each population gets its own ensemble and decoder. A hysteresis readout with boundary refinement is followed by post-processing that models how annotators labelled the data. The final system scores 1.5926 on the leaderboard, sixth overall, with F1/Dice of 0.494/0.718 on natural clips and 0.993/0.985 on synthetic ones. No external data is used, and all code, weights and posteriors are released.
+Track 1 asks for the onset and offset of every non-speech noise event in Indian-language speech and scores event-level F1 plus segment-level Dice. We train frame-level taggers of six designs on 20\,ms frames. Each combines WavLM-Base+ (truncated to four layers, or all twelve with a learned layer mix) with an optional AudioSet-strong BEATs stream, a bidirectional GRU, and heads for frame presence, clip presence, signed distance to the nearest boundary and, optionally, latched start/end states. The test set mixes field recordings with synthetic mixtures, which a waveform-peak rule separates (exactly, on validation), so each population gets its own ensemble and decoder. A hysteresis readout with boundary refinement is followed by post-processing that models how annotators labelled the data. The final system scores 1.5926 on the leaderboard, sixth overall, with F1/Dice of 0.494/0.718 on natural clips and 0.993/0.985 on synthetic ones. No external data is used; all code, the six surviving checkpoints and all test posteriors are released.
 \end{abstract}
 
 \section{Training Data and Preprocessing}
@@ -53,12 +54,12 @@ Track 1 asks for the onset and offset of every non-speech noise event in Indian-
 \begin{figure*}[t]
 \centering
 \input{fig1}
-\caption{System overview. (a) The six designs differ in encoder depth, second stream, Conformer, RED head and training options (Table~\ref{tab:mem}); small plots show what each head predicts. (b) Routing, per-route ensemble, hysteresis readout and post-pass (Section~III).}
+\caption{System overview. (a) The six designs differ in encoder depth, second stream, Conformer, RED head and training options (Table~\ref{tab:mem}); small plots show what each head predicts. (b) Routing, per-route ensemble, hysteresis readout and post-pass (Section~II).}
 \label{fig:sys}
 \end{figure*}
 
 \section{Proposed Method}
-\textbf{Model architecture} (Fig.~\ref{fig:sys}a). Most designs keep the first four of the twelve layers of WavLM-Base+~\cite{wavlm}, with the convolutional front-end frozen; v12 keeps all twelve and learns a softmax mixture of hidden states, initialised at layer 4. The optional second stream is BEATs~\cite{beats} as fine-tuned on AudioSet-strong labels by PretrainedSED~\cite{schmid2025}. It supplies a 768-dimensional embedding plus 447 class logits per 40\,ms frame, upsampled to 20\,ms, and is either precomputed and frozen or fine-tuned inside the model. Both streams are layer-normalised and concatenated (1983-d), optionally passed through a two-layer Conformer~\cite{conformer} (256-d, 4 heads, kernel 31), and fed to a two-layer BiGRU with 256 units per direction. Up to four heads read the GRU states. The frame head outputs eight presence logits; the clip head attention-pools them into eight clip probabilities; the boundary head regresses signed seconds to the nearest onset and offset. The recurrent event detection (RED) head~\cite{schmid2026red} predicts, per channel, start and end probabilities $a_t,b_t$ and decodes presence as the latch $p_t=a_t(1-p_{t-1})+(1-b_t)\,p_{t-1}$, computed with a parallel scan. Where it exists, this latch replaces the frame sigmoid at inference.
+\textbf{Model architecture} (Fig.~\ref{fig:sys}a). Most designs keep the first four of the twelve layers of WavLM-Base+~\cite{wavlm}, with the convolutional front-end frozen; v12 keeps all twelve and learns a softmax mixture of hidden states, initialised at layer 4. The optional second stream is BEATs~\cite{beats} as fine-tuned on AudioSet-strong labels by PretrainedSED~\cite{schmid2025}. It supplies a 768-dimensional embedding plus 447 class logits per 40\,ms frame, upsampled to 20\,ms, and is either precomputed and frozen or fine-tuned inside the model. Both streams are layer-normalised and concatenated (1983-d), optionally passed through a two-layer Conformer~\cite{conformer} (256-d, 4 heads, kernel 31), and fed to a two-layer BiGRU~\cite{gru} with 256 units per direction. Up to four heads read the GRU states. The frame head outputs eight presence logits; the clip head attention-pools them into eight clip probabilities; the boundary head regresses signed seconds to the nearest onset and offset. The recurrent event detection (RED) head~\cite{schmid2026red} predicts, per channel, start and end probabilities $a_t,b_t$ and decodes presence as the latch $p_t=a_t(1-p_{t-1})+(1-b_t)\,p_{t-1}$, computed with a parallel scan. Where it exists, this latch replaces the frame sigmoid at inference.
 
 \textbf{Loss formulations.} The objective is $\mathcal{L}=\mathcal{L}_\text{frame}+0.3\,\mathcal{L}_\text{clip}+0.3\,\mathcal{L}_\text{bd}+\mathcal{L}_\text{RED}$. $\mathcal{L}_\text{frame}$ is a binary cross-entropy (BCE, positive weight 2) over all eight channels, $\mathcal{L}_\text{clip}$ a BCE against the crop maximum, and $\mathcal{L}_\text{bd}$ a Huber loss on (prediction$-$target)/50\,ms over frames within 0.5\,s of a boundary. For RED designs only,
 \begin{equation}
@@ -66,11 +67,11 @@ Track 1 asks for the onset and offset of every non-speech noise event in Indian-
 \end{equation}
 a focal ($\gamma\!=\!2$)~\cite{focal} presence loss plus the onset/offset loss of~\cite{schmid2026red}, unweighted by tier. Clips whose events cover at least 95\% of the audio carry no frame contrast; they get weight 0 in all three losses, except in designs with whole-clip presence kept ($\dagger$ in Table~\ref{tab:mem}), which train on them normally.
 
-\textbf{Training strategy.} We use AdamW~\cite{adamw} (weight decay 0.05) with a one-cycle schedule~\cite{onecycle} (15\% warm-up). Learning rates are $5\times10^{-5}$ for WavLM and fine-tuned BEATs and $10^{-3}$ for the heads; in v5\_S and v12 the BEATs layers instead use layer-wise learning-rate decay (LLRD) 0.8~\cite{ulmfit} from $10^{-4}$, after one heads-only epoch. Batches are 6 crops with 3 accumulation steps, gradients are clipped at 5, and training runs in bf16 autocast. A checkpoint is chosen by average precision of the union channel minus the capped boundary error on an internal 10\% split grouped by state, district and language. Each checkpoint stores its full configuration (Table~\ref{tab:mem}).
+\textbf{Training strategy.} We train in PyTorch~\cite{pytorch} with AdamW~\cite{adamw} (weight decay 0.05) with a one-cycle schedule~\cite{onecycle} (15\% warm-up). Learning rates are $5\times10^{-5}$ for WavLM and fine-tuned BEATs and $10^{-3}$ for the heads; in v5\_S and v12 the BEATs layers instead use layer-wise learning-rate decay (LLRD) 0.8~\cite{ulmfit} from $10^{-4}$, after one heads-only epoch. Batches are 6 crops with 3 accumulation steps, gradients are clipped at 5, and training runs in bf16 autocast. A checkpoint is chosen by average precision of the union channel minus the capped boundary error on an internal 10\% split grouped by state, district and language. Each checkpoint stores its full configuration (Table~\ref{tab:mem}).
 
 \begin{table}[t]
 \centering
-\caption{Member designs (all WavLM-Base+, 5\,s crops). Params include frozen weights; LLRD: layer-wise learning-rate decay; TTA: test-time shifts, natural route only.}
+\caption{Member designs (all WavLM-Base+, 5\,s crops). Params: weights stored in the checkpoint (offline frozen BEATs not counted); LLRD: layer-wise learning-rate decay; TTA: test-time shifts, natural route only.}
 \label{tab:mem}
 \setlength{\tabcolsep}{2.6pt}
 \footnotesize
@@ -80,10 +81,10 @@ Design & Layers & BEATs & Conf. & RED & Ep. & Params & TTA \\
 \midrule
 hon\_A & 4 & -- & -- & -- & 8 & 40.4M & \checkmark \\
 bts\_C & 4 & frozen & 2 & -- & 8 & 43.2M & \\
-bft\_S & 4 & tuned & -- & -- & 8 & 133.3M & \checkmark \\
+bft\_S & 4 & tuned & -- & -- & 8 & 133.4M & \checkmark \\
 bts\_R & 4 & frozen & 2 & \checkmark & 8 & 43.2M & \\
-v5\_S$^{\dagger}$ & 4 & tuned, LLRD & -- & \checkmark & 6 & 133.3M & \checkmark \\
-v12$^{\dagger}$ & 12, mix & tuned, LLRD & -- & \checkmark & 6 & 190.0M & \\
+v5\_S$^{\dagger}$ & 4 & tuned, LLRD & -- & \checkmark & 6 & 133.4M & \checkmark \\
+v12$^{\dagger}$ & 12, mix & tuned, LLRD & -- & \checkmark & 6 & 190.1M & \\
 \bottomrule
 \multicolumn{8}{@{}p{0.97\columnwidth}@{}}{\scriptsize $^{\dagger}$Whole-clip presence kept. Eight trained checkpoints were submitted. \nat\ mean: hon\_A, bts\_C, bft\_S, bts\_R, v5\_S, and two v12 runs (seeds 61, 62). \syn\ mean: hon\_A, bts\_C, bft\_S, bts\_R, and v5all (the v5\_S recipe trained on all validation) counted twice. Seeds: 42, except v5\_S/v5all (13) and v12 (61, 62).}
 \end{tabular}
@@ -103,22 +104,22 @@ WavLM-Base+~\cite{wavlm} & {\scriptsize\texttt{microsoft/wavlm-base-plus}} (HF),
 BEATs\_strong\_1~\cite{beats} & PretrainedSED~\cite{schmid2025} v0.0.1, md5 \texttt{0b3d1253} & features, habit tags \\
 6 checkpoints$^{\ast}$ & this work, GitHub v1.0 / HF$^{1}$ & live inference \\
 8 posterior sets$^{\ast}$ & this work, GitHub v1.0 / HF$^{1}$ & exact rebuild \\
-Habit classifier & this work, GitHub v1.0 / HF$^{1}$ & post-pass \\
+Habit classifier$^{\ast}$ & this work, GitHub v1.0 / HF$^{1}$ & post-pass \\
 \bottomrule
-\multicolumn{3}{@{}p{0.97\columnwidth}@{}}{\scriptsize $^{\ast}$The six surviving checkpoints (v12\_ep4 stands in for the lost v12 runs, v5\_S for v5all) and cached test posteriors of all eight submitted ones.}
+\multicolumn{3}{@{}p{0.97\columnwidth}@{}}{\scriptsize $^{\ast}$The six surviving checkpoints (v12\_ep4 stands in for the lost v12 runs, v5\_S for v5all) and cached test posteriors of all eight submitted ones. The habit classifier is a retrain with the same recipe (98.8\% decision agreement); the original was lost.}
 \end{tabular}
 \end{table}
 
 \textbf{Implementation details: inference and readout} (Fig.~\ref{fig:sys}b). Posteriors are computed on 5\,s windows with a 2.5\,s hop and averaged where windows overlap. On the natural route three members also use test-time augmentation (TTA): the clip is zero-padded on both sides by 0, 0.64 and 1.28\,s, and the trimmed outputs are averaged. Natural (\nat) recordings peak at int16 full scale ($\geq$32{,}765), synthetic (\syn) mixtures at 0.99 of it; this rule is exact on validation and splits the test set into 3{,}437 natural and 2{,}080 synthetic clips. The readout (\texttt{asym} in the configs) is hysteresis: an event is a maximal run of frames with $p\!\geq\!0.6$ that contains at least one frame with $p\!\geq\!0.7$. Gaps of at most 60\,ms are merged, then events shorter than 0.2\,s (\nat) or 0.08\,s (\syn) are dropped. Each edge then moves to the median of the positions proposed by the boundary head over all frames within $\pm$0.2\,s (\nat) or $\pm$0.3\,s (\syn); moves over 0.35\,s are rejected. On natural clips, runs of the human-non-speech channel ($\geq$0.55, $\geq$60\,ms) inside a predicted event at least 4$\times$ longer are added as extra events. A clip left empty receives one event over the frames above 0.7 of its maximum posterior.
 
-\textbf{Implementation details: annotation-aware post-pass.} The natural-clip stages follow labelling habits measured on validation. \emph{Background extension} lengthens events of at least 1\,s in the animal, singing/music and appliance categories while the union posterior stays above 0.3, and bridges gaps of at most 0.5\,s between two events of at least 1\,s when the posterior across the gap stays above 0.3. The \emph{habit} stage adds one clip-length event (keeping the others) when no event covers 90\% of the clip and a classifier gives $p\geq0.5$ that annotators marked one event other than human non-speech over at least half of it. The classifier, a histogram gradient-boosted model~\cite{sklearn} trained on Gold and natural TUNE clips, sees BEATs-strong tags pooled into nine sound groups, the duration, and the recording state parsed from the clip id (DECIDE AUC 0.73). \emph{Nested events} (``type-C'' in the code) add a category run (score $\geq$0.65 for $\geq$0.3\,s, gaps $\leq$0.12\,s bridged, IoU $<$0.5 with existing events) inside a predicted event at least twice as long whose dominant category differs. The scorer is category-agnostic and accepts overlapping predictions, so such events can still be matched. On synthetic clips we drop events quieter than $-16$\,dB relative to the clip and shift edges by +8\,ms (onset) and $-6$\,ms (offset).
+\textbf{Implementation details: annotation-aware post-pass.} The natural-clip stages follow labelling habits measured on validation. \emph{Background extension} lengthens events of at least 1\,s in the animal, singing/music and appliance categories while the union posterior stays above 0.3, and bridges gaps of at most 0.5\,s between two events of at least 1\,s under the same condition. The \emph{habit} stage adds one clip-length event (keeping the others) when no event covers 90\% of the clip and a classifier gives $p\geq0.5$ that annotators marked one event other than human non-speech over at least half of it. The classifier, a histogram gradient-boosted model~\cite{sklearn} trained on Gold and natural TUNE clips, sees BEATs-strong tags pooled into nine sound groups, the duration, and the recording state parsed from the clip id (DECIDE AUC 0.73). \emph{Nested events} (``type-C'' in the code) add a category run (score $\geq$0.65 for $\geq$0.3\,s, gaps $\leq$0.12\,s bridged, IoU $<$0.5 with existing events) inside a predicted event at least twice as long whose dominant category differs. The category-agnostic scorer can still match such nested events. On synthetic clips we drop events quieter than $-16$\,dB relative to the clip and shift edges by +8\,ms (onset) and $-6$\,ms (offset).
 
-\textbf{Pretrained models and checkpoints.} Table~\ref{tab:pre} lists every pretrained model and checkpoint with its name, version, source and role in the system.
+\textbf{Pretrained models and checkpoints.} Table~\ref{tab:pre} gives the name, version, source and role of each.
 
 \section{Results and Conclusion}
 \textbf{Evaluation metrics.} Track 1 is category-agnostic: only time spans count, and the score is $S=F_1+\mathrm{Dice}$. $F_1$ is event-based~\cite{mesaros2016} and micro-pooled over all clips with greedy one-to-one matching; the organisers' scorer accepts a match when both onset and offset lie within $\max(0.2\,d_\text{ref},50\,\text{ms})$ of the reference, where $d_\text{ref}$ is its duration. Dice is computed per clip on a 10\,ms grid and averaged over clips.
 
-\textbf{Results.} Table~\ref{tab:lb} lists the five submissions. Each raised the combined score, the habit stage most (+0.0050, all from natural clips); the final system scores 1.5926 (rank 6).
+\textbf{Results.} Each of the five submissions (Table~\ref{tab:lb}) raised the score, the habit stage most (+0.0050, natural only); the last scores 1.5926 (rank 6).
 
 \begin{table}[t]
 \centering
@@ -149,9 +150,9 @@ Ensemble + readout & 1.5831 & 0.4834 & 0.7083 & -- & -- \\
 \label{fig:wf}
 \end{figure}
 
-\textbf{Key findings.} The natural route is the bottleneck: synthetic clips are near ceiling, natural F1 is 0.494. Fig.~\ref{fig:wf} shows why natural references are missed on DECIDE: mostly merged neighbours and misplaced edges; 18\% are not detected at all. Leaderboard gains were about 0.46$\times$ the DECIDE estimates, so DECIDE is optimistic. Members on stronger encoders (WavLM-Large with BEATs; WavLM with Dasheng~\cite{dasheng}) gave the best single model on DECIDE (1.4159 vs.\ 1.3921 for hon\_A) but lowered the ensemble by 0.008--0.010. Natural edge shifts ($-$0.0015), an edge-correction CNN ($-$0.0019), duplicated events ($-$0.0035) and TTA on bts\_C ($-$0.0038) also lost on DECIDE and were not submitted.
+\textbf{Key findings.} The natural route is the bottleneck: synthetic clips are near ceiling, natural F1 is 0.494. Fig.~\ref{fig:wf} shows why natural references are missed on DECIDE: mostly merged neighbours and misplaced edges; 18\% are not detected at all. Leaderboard gains were about 0.46$\times$ the DECIDE estimates, so DECIDE is optimistic. Members on stronger encoders (WavLM-Large with BEATs; WavLM with Dasheng~\cite{dasheng}) gave the best single models on DECIDE but lowered the ensemble by 0.008--0.010. Natural edge shifts ($-$0.0015), an edge-correction CNN ($-$0.0019), duplicated events ($-$0.0035) and TTA on bts\_C ($-$0.0038) also lost on DECIDE and were not submitted.
 
-Rebuilt from the cached posteriors, the final file matches the upload at official-scorer F1 0.9996 / Dice 0.9993 (three TTA posterior sets were recomputed on another GPU). v12, v12s62 and v5all were lost with a cloud instance; live inference with substitutes (Table~\ref{tab:pre}) agrees at F1 0.984 / Dice 0.972 and takes 66\,min for the 10.8\,h test set on a laptop RTX 4070.
+Rebuilt from the cached posteriors, the final file matches the upload at official-scorer F1 0.9996 / Dice 0.9993. Three members were lost with a cloud instance; live inference with substitutes (Table~\ref{tab:pre}) agrees at F1 0.984 / Dice 0.972, taking 66\,min for the 10.8\,h test set on a laptop RTX 4070.
 
 \textbf{Conclusion.} A WavLM ensemble with explicit boundary supervision, decoded per route and post-processed to match how annotators label, reached 1.5926 and rank 6 without external data. Separating merged neighbours and placing natural edges remain the open problems.
 
@@ -167,8 +168,10 @@ Rebuilt from the cached posteriors, the final file matches the upload at officia
 \bibitem{beats} S.~Chen \emph{et~al.}, ``BEATs: Audio pre-training with acoustic tokenizers,'' in \emph{Proc. ICML}, PMLR 202, 2023, pp.~5178--5193.
 \bibitem{schmid2025} F.~Schmid, T.~Morocutti, F.~Foscarin, J.~Schl\"uter, P.~Primus, and G.~Widmer, ``Effective pre-training of audio transformers for sound event detection,'' in \emph{Proc. ICASSP}, 2025.
 \bibitem{conformer} A.~Gulati \emph{et~al.}, ``Conformer: Convolution-augmented transformer for speech recognition,'' in \emph{Proc. Interspeech}, 2020, pp.~5036--5040.
-\bibitem{schmid2026red} F.~Schmid \emph{et~al.}, ``Sound event detection with boundary-aware optimization and inference,'' \emph{IEEE Signal Process. Lett.}, vol.~33, p.~2340, 2026, doi: 10.1109/LSP.2026.3698771.
+\bibitem{gru} K.~Cho \emph{et~al.}, ``Learning phrase representations using RNN encoder-decoder for statistical machine translation,'' in \emph{Proc. EMNLP}, 2014, pp.~1724--1734.
+\bibitem{schmid2026red} F.~Schmid \emph{et~al.}, ``Sound event detection with boundary-aware optimization and inference,'' \emph{IEEE Signal Process. Lett.}, vol.~33, pp.~2340--2344, 2026, doi: 10.1109/LSP.2026.3698771.
 \bibitem{focal} T.-Y.~Lin, P.~Goyal, R.~Girshick, K.~He, and P.~Doll\'ar, ``Focal loss for dense object detection,'' in \emph{Proc. ICCV}, 2017, pp.~2980--2988.
+\bibitem{pytorch} A.~Paszke \emph{et~al.}, ``PyTorch: An imperative style, high-performance deep learning library,'' in \emph{Proc. NeurIPS}, 2019.
 \bibitem{adamw} I.~Loshchilov and F.~Hutter, ``Decoupled weight decay regularization,'' in \emph{Proc. ICLR}, 2019.
 \bibitem{onecycle} L.~N.~Smith and N.~Topin, ``Super-convergence: Very fast training of neural networks using large learning rates,'' in \emph{Proc. SPIE}, vol.~11006, 2019.
 \bibitem{ulmfit} J.~Howard and S.~Ruder, ``Universal language model fine-tuning for text classification,'' in \emph{Proc. ACL}, 2018, pp.~328--339.

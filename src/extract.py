@@ -126,11 +126,12 @@ def _iter_parquet(tier=None, limit=None):
 
 
 def run(source, name, tier=None, limit=None, workers=12, device="cuda", layer=None):
+    import data as D
     FEAT.mkdir(parents=True, exist_ok=True)
     if source == "val":
-        it = _iter_zip(REPO / "data" / "validation.zip", limit=limit, expect=2501)
+        it = _iter_zip(D.VAL_ZIP, limit=limit, expect=2501)
     elif source == "test":
-        it = _iter_zip(REPO / "data" / "input_data.zip", limit=limit, expect=5517)
+        it = _iter_zip(D.TEST_ZIP, limit=limit, expect=5517)
     elif source == "hf":
         it = _iter_parquet(tier=tier, limit=limit)
     else:

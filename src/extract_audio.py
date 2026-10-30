@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 import audiostore as A  # noqa: E402
 import extract as X     # noqa: E402
+import data as D        # noqa: E402
 import features as F    # noqa: E402
 
 OUT = (P.ROOT / "audio")
@@ -27,10 +28,10 @@ OUT = (P.ROOT / "audio")
 
 def run(source, name, tier=None, limit=None, workers=14):
     if source == "val":
-        it = X._iter_zip(X.REPO / "data" / "validation.zip", limit=limit,
+        it = X._iter_zip(D.VAL_ZIP, limit=limit,
                          expect=2501)
     elif source == "test":
-        it = X._iter_zip(X.REPO / "data" / "input_data.zip", limit=limit,
+        it = X._iter_zip(D.TEST_ZIP, limit=limit,
                          expect=5517)
     elif source == "hf":
         it = X._iter_parquet(tier=tier, limit=limit)

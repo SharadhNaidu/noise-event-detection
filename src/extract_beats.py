@@ -89,6 +89,9 @@ def check(dev):
 
 def main():
     args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     if args and args[0].startswith("--device="):              # inference/infer.py passes its --device through
         dev = args.pop(0).split("=", 1)[1]

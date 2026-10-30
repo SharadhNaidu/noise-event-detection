@@ -68,7 +68,7 @@ def harvest_noise(tune_only=True, min_dur=0.15, pad=0.02):
     tune, _ = SP.split_by_speaker(list(refs), frac=0.5, seed=42)
     keep = set(tune) if tune_only else set(refs)
 
-    z = zipfile.ZipFile(REPO / "data" / "validation.zip")
+    z = zipfile.ZipFile(D.VAL_ZIP)
     names = [n for n in z.namelist()
              if n.endswith(".wav") and "__MACOSX" not in n]
     clean = {n.split("/")[-1][:-4]: n for n in names

@@ -102,6 +102,9 @@ def token():
     return None
 
 
+WAVLM_REV = "4c66d4806a428f2e922ccfa1a962776e232d487b"   # hub revision all checkpoints were tested with
+
+
 class Encoder(nn.Module):
     """WavLM-base+ truncated to `n_layers` transformer blocks, trainable.
 
@@ -115,7 +118,8 @@ class Encoder(nn.Module):
                  layer_sum=False, init_layer=None, grad_ckpt=False):
         super().__init__()
         from transformers import AutoModel
-        m = AutoModel.from_pretrained(name, token=token())
+        rev = WAVLM_REV if name == "microsoft/wavlm-base-plus" else None
+        m = AutoModel.from_pretrained(name, token=token(), revision=rev)
         m.encoder.layers = m.encoder.layers[:n_layers]
         self.m = m
         self.out_dim = m.config.hidden_size

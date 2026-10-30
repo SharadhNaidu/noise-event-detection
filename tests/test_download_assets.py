@@ -11,6 +11,15 @@ BLOB = {"a.pt": b"weights-a", "p.pkl": b"post-p"}
 MD5 = {k: hashlib.md5(v).hexdigest() for k, v in BLOB.items()}
 
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_local_table(tmp_path, monkeypatch):
+    """Exercise the release md5.txt path unless a test installs a local table."""
+    monkeypatch.setattr(D, "LOCAL_MD5", tmp_path / "absent_md5.txt")
+
+
 def fake_urlopen(calls):
     def op(url, timeout=None):
         calls.append(url)
@@ -57,3 +66,16 @@ def test_bad_md5_file_is_removed_and_no_match_fails(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(SystemExit, match="no entries"):
         D.release_files("nothing/", tmp_path)
+
+
+def test_local_md5_table_needs_no_network_when_files_are_verified(tmp_path, monkeypatch):
+    table = tmp_path / "md5.txt"
+    table.write_text(f"{MD5['a.pt']}  checkpoints/a.pt\n")
+    monkeypatch.setattr(D, "LOCAL_MD5", table)
+    (tmp_path / "checkpoints").mkdir()
+    (tmp_path / "checkpoints" / "a.pt").write_bytes(BLOB["a.pt"])
+
+    def offline(url, timeout=None):
+        raise D.urllib.error.URLError("offline")
+    monkeypatch.setattr(D.urllib.request, "urlopen", offline)
+    assert D.release_files("checkpoints/", tmp_path) == []

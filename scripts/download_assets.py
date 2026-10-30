@@ -5,7 +5,8 @@
 checkpoints : 6 member checkpoints + habit_model.pkl   -> checkpoints/          (GitHub release assets)
 posteriors  : cached TEST posteriors of all members    -> posteriors/           (for reproduce/rebuild_lb.py)
 beats       : BEATs_strong_1.pt (PretrainedSED v0.0.1) -> ext/PretrainedSED/resources/
-No token is needed: every source is public. Files already present with the right md5 are skipped."""
+No token is needed: every source is public. Files already present with the right md5 are skipped,
+and the md5 table is read from the repo's own md5.txt, so a complete install needs no network."""
 import argparse
 import hashlib
 import shutil
@@ -19,6 +20,7 @@ RELEASE = "https://github.com/SharadhNaidu/noise-event-detection/releases/downlo
 BEATS_URL = "https://github.com/fschmid56/PretrainedSED/releases/download/v0.0.1/BEATs_strong_1.pt"
 BEATS_MD5 = "0b3d1253749058df5551beeb0a8f5e87"
 TIMEOUT = 120   # seconds without data before a stalled connection is abandoned
+LOCAL_MD5 = REPO / "md5.txt"   # committed copy of the release md5.txt
 
 
 def md5(p, chunk=1 << 22):
@@ -51,11 +53,15 @@ def get(url, p, want):
 
 
 def release_files(prefix, dest):
-    """md5.txt (a release asset) lists '<md5>  <repo path>'; the asset name is the file's basename."""
-    try:
-        table = urllib.request.urlopen(f"{RELEASE}/md5.txt", timeout=TIMEOUT).read().decode().splitlines()
-    except urllib.error.URLError as e:
-        sys.exit(f"cannot read {RELEASE}/md5.txt ({e}). Is the GitHub release v1.0 reachable from this machine?")
+    """md5.txt lists '<md5>  <repo path>'; the release asset name is the file's basename.
+    The committed copy is used; the release copy only if it is missing."""
+    if LOCAL_MD5.exists():
+        table = LOCAL_MD5.read_text().splitlines()
+    else:
+        try:
+            table = urllib.request.urlopen(f"{RELEASE}/md5.txt", timeout=TIMEOUT).read().decode().splitlines()
+        except urllib.error.URLError as e:
+            sys.exit(f"cannot read {RELEASE}/md5.txt ({e}). Is the GitHub release v1.0 reachable from this machine?")
     bad, n = [], 0
     for line in table:
         if not line.strip():
@@ -65,7 +71,7 @@ def release_files(prefix, dest):
             n += 1
             bad += get(f"{RELEASE}/{Path(name).name}", Path(dest) / name, want)
     if not n:
-        sys.exit(f"md5.txt of the release lists no entries under {prefix}")
+        sys.exit(f"md5.txt lists no entries under {prefix}")
     return bad
 
 

@@ -28,12 +28,12 @@ Frame-level sound-event detection of noise events in Indian-language speech (Vaa
 
 ```bash
 git clone https://github.com/SharadhNaidu/noise-event-detection && cd noise-event-detection
-python3.10 -m venv .venv && source .venv/bin/activate        # Windows: .venv\Scripts\activate  (Ubuntu: apt install python3.10-venv)
+python3.10 -m venv .venv && source .venv/bin/activate        # Windows: py -3.10 -m venv .venv && .venv\Scripts\activate  (Ubuntu: apt install python3.10-venv)
 pip install -r requirements_inference.txt
 bash scripts/run_inference.sh /path/to/wavs predictions.zip   # or a .zip of wavs, e.g. input_data.zip
 ```
 
-`run_inference.sh` downloads and md5-checks the checkpoints and the BEATs weights on the first run, then calls `inference/infer.py`. The same steps by hand:
+`run_inference.sh` downloads and md5-checks the checkpoints and the BEATs weights on the first run, then calls `inference/infer.py`. The md5 table is the committed `md5.txt`, so once the assets are in place no network is needed for them. The same steps by hand:
 
 ```bash
 python scripts/download_assets.py --what checkpoints        # -> checkpoints/  (GitHub release v1.0, ~2.3 GB)
@@ -49,19 +49,21 @@ python inference/infer.py --audio /path/to/wavs --out predictions.zip [--device 
 ```
 Times are in seconds, rounded to 3 decimals. Every input clip gets a line. The decoder has the empty-clip fallback used on the leaderboard: a clip with nothing above threshold gets its most likely span, so the leaderboard file has no empty clips. Only inputs too short to form a frame, or zero-length/header-only files, get `"events": []`. These inputs were tested end to end: mono and stereo, 16, 22.05 and 48 kHz, 8-bit PCM, 16-bit PCM and float wavs, clips from 1 sample to 40 s, digital silence, and a header-only file.
 
+**Offline machines.** Run inference once with network access (or copy `checkpoints/`, `ext/PretrainedSED/resources/BEATs_strong_1.pt` and the Hugging Face cache, `~/.cache/huggingface`). That run also caches `microsoft/wavlm-base-plus` at the pinned revision `4c66d48`. Afterwards `HF_HUB_OFFLINE=1 bash scripts/run_inference.sh ...` runs with no network: present files with the right md5 are not downloaded again.
+
 **Other flags:** `--work DIR` sets the scratch folder for the audio store, BEATs features and linked checkpoints (default `workdir/infer`). The large per-run audio and feature files are deleted at the end unless you pass `--keep-work`. `--limit N` runs the first N clips (a smoke test).
 
 **Run time** for the 5,517 test clips (about 10.8 h of audio) on an RTX 4070 Laptop (8 GB) was 66 min in our full run, measured while other jobs shared the machine. Most of it goes on the three TTA members. A GPU with 8 GB or more is recommended. CPU works but is slow.
 
 **GPU support:** the pinned `torch 2.4.1+cu118` wheels ship kernels for compute capability 3.7–9.0, i.e. Kepler (K80) to Hopper (A100, H100, RTX 20/30/40, T4, V100). They need an NVIDIA driver ≥ 450 (CUDA 11.x). RTX 50xx and other Blackwell GPUs need a newer torch build, which we have not tested. On such machines, `--device cpu` runs every step on CPU, including BEATs feature extraction. If you run short of GPU memory, lower `--batch` (default 8).
 
-**Messages you can ignore:** transformers prints that `pos_conv_embed ... weight_g/weight_v` were "not used" and `parametrizations.weight.original0/1` were "newly initialized". This comes from how newer torch names weight-norm parameters when the pretrained hub weights load. Every checkpoint stores those tensors and is loaded with `strict=True` right afterwards, so nothing stays at its random initial value.
+**Messages you can ignore:** transformers prints that `pos_conv_embed ... weight_g/weight_v` were "not used" and `parametrizations.weight.original0/1` were "newly initialized". This comes from how newer torch names weight-norm parameters when the pretrained hub weights load. Every checkpoint stores those tensors and is loaded with `strict=True` right afterwards, so nothing stays at its random initial value. On Windows you may also see `1Torch was not compiled with flash attention` (sic) (torch falls back to another attention kernel) and, on a cold cache, a huggingface_hub note about symlinks. Neither affects the output.
 
 ## Method
 
 Every member is a frame model at 20 ms that outputs 8 tracks: "any noise" plus 7 noise categories. Members are fine-tuned from `microsoft/wavlm-base-plus` (4 or 12 transformer layers). Some also use BEATs AudioSet-strong features, either frozen ("bts") or fine-tuned ("bft"). They are trained with `src/finetune.py` on 5 s crops.
 
-1. **Routing.** The test set mixes real ("natural") recordings and synthetic mixtures. Natural clips peak at int16 full scale (≥ 32765), synthetic clips at 0.99 (`submit_ens.natural_by_peak`).
+1. **Routing.** The test set mixes real ("natural") recordings and synthetic mixtures. Natural clips peak at int16 full scale (≥ 32765), synthetic clips at 0.99 (`submit_ens.natural_by_peak`). The rule is exact on validation and test as released; audio that was re-encoded or level-normalised would need a different router.
 2. **Ensemble.** Each route averages the member posteriors with equal weight (`configs/members.json`):
    - natural: `hon_A (TTA), bts_C, bft_S (TTA), bts_R, v12, v5_S (TTA), v12s62`
    - synthetic: `hon_A, bts_C, bft_S, bts_R, v5all, v5all`
@@ -69,10 +71,10 @@ Every member is a frame model at 20 ms that outputs 8 tracks: "any noise" plus 7
 3. **Decoding** (`src/postpass.py`; constants in `configs/postpass.json`):
    - **Readouts.** Each route uses a frozen hysteresis readout (`configs/readouts/md02_natural.json`, `ens5_v5w2_ov.json`), then an empty-clip fallback.
    - **Synthetic level filter.** Synthetic events quieter than −16 dB relative to the clip are dropped. The labels mark only *inserted* noise, not breaths already present in the clean speech.
-   - **Background extension (`bgext`).** An event of at least 1 s whose dominant category is a long background class (0, 3, 5) is extended while the any-noise posterior stays ≥ 0.30. Two such long events less than 0.5 s apart are joined when the gap itself stays ≥ 0.30.
-   - **Habit full-span.** Some annotators label a persistent background as one event covering the whole clip. A small model (`src/habit.py`: HistGradientBoosting on clip-pooled BEATs tags, recording state and duration) predicts this from the clip. For natural clips with p ≥ 0.5 whose events cover less than 90 % of the clip, one full-span event is added; the existing events are kept.
+   - **Background extension (`bgext`).** An event of at least 1 s whose dominant category is a long background class (0, 3, 5) is extended while the any-noise posterior stays ≥ 0.30. Any two events of at least 1 s that are less than 0.5 s apart are joined when the gap itself stays ≥ 0.30.
+   - **Habit full-span.** Some annotators label a persistent background as one event covering the whole clip. A small model (`src/habit.py`: HistGradientBoosting on clip-pooled BEATs tags, recording state and duration) predicts this from the clip. For natural clips with p ≥ 0.5 where no single event covers 90 % of the clip, one full-span event is added; the existing events are kept.
    - **Type-C inner events.** A category run (score ≥ 0.65 for at least 0.3 s, gaps under 0.12 s bridged) is added as its own nested event when it sits inside a live event at least 2× its length whose dominant category is different. The habit full-span event is never a host.
-   - **Synthetic edge shift.** Synthetic onsets and offsets move by +4/−4 ms and then +4/−2 ms, clamped to the clip.
+   - **Synthetic edge shift.** Synthetic onsets and offsets move by +4/−4 ms (clamped to the clip) and then by +4/−2 ms.
 
 ## Repository layout
 
@@ -81,10 +83,14 @@ inference/infer.py           wav folder/zip -> predictions.zip (live models; ent
 scripts/run_inference.sh     one-command inference (downloads assets, then infer.py)
 scripts/download_assets.py   fetch + md5-verify checkpoints / posteriors / BEATs weights
 scripts/build_audio_store.py wav folder/zip -> 16 kHz int16 store (the format every src/ module reads)
+scripts/make_silver_long.py  silver_audio -> silver_long training store (clips with an event >= 1.5 s)
+md5.txt                      md5 of every release asset (checkpoints, posteriors); used by download_assets.py
 scripts/tta_posteriors.py    per-member posteriors (plain or TTA) on a store -> post8_<store>_<tag>[_tta].pkl
 reproduce/rebuild_lb.py      cached test posteriors -> the leaderboard file (md5-checked)
 reproduce/habit_test_shipped.json  the 124 natural test clips the shipped habit model turned full-span
-src/                         training + model + decoding library (finetune.py, model.py, gate.py, postpass.py, habit.py, ...)
+src/                         training + model + decoding library. The final system uses finetune.py, model.py, gate.py, submit_ft.py,
+                             submit_ens.py, members.py, postpass.py, habit.py, extract_*.py, synth.py, make_valtune.py and their imports; other
+                             modules (e.g. train_epn*, boxdec, densedec, joint_interval) are experiments that did not enter it
 src/paths.py                 $INDOML_ROOT (default ./workdir): audio stores, features, checkpoints; src/data.py reads $INDOML_DATA (default ./data)
 configs/members.json         ensemble lists, TTA members, lost-checkpoint substitutes
 configs/members_cfg.json     full training argparse config of every shipped checkpoint
@@ -102,13 +108,13 @@ docs/technical_report.pdf    the 3-page technical report (source: docs/report/, 
 |---|---|
 | Python | 3.10 (3.10.21 tested) |
 | PyTorch | 2.4.1 + CUDA 11.8 wheels (`--extra-index-url https://download.pytorch.org/whl/cu118`) |
-| Key packages | transformers 4.44.2, numpy 2.2.6, scikit-learn 1.7.2 (the habit-model pickle needs this exact version), scipy 1.15.3, librosa 0.10.2.post1, soundfile 0.12.1, einops 0.8.1, huggingface_hub 0.34.4. Pinned in `requirements_*.txt` |
+| Key packages | transformers 4.44.2, numpy 2.2.6, scikit-learn 1.7.2 (the habit-model pickle needs this exact version), scipy 1.15.3, librosa 0.10.2.post1, soundfile 0.12.1, einops 0.8.1, huggingface_hub 0.34.4. Pinned in `requirements_*.txt`; `requirements_inference.lock.txt` freezes every package of the tested inference environment |
 | Training GPUs | **NVIDIA A100** cloud notebook (bft_S, v5_S, v12, v12s62, v5all; exact memory variant not recorded) and **NVIDIA GeForce RTX 4070 Laptop, 8 GB** (hon_A, bts_C, bts_R). Later work ran on an **A100 MIG 3g.20gb slice (20 GB)** with 15 CPU cores and 16 GB RAM, driver 470 (CUDA 11.4 runtime; cu118 wheels run on it, cu121+ do not) |
 | Training CUDA | 11.8 wheels (driver 470 / CUDA 11.4 on the server, driver 561.09 on the laptop) |
 | Inference (tested) | Windows 11, Intel i9-14900HX, 32 GB RAM, RTX 4070 Laptop 8 GB, driver 561.09, CUDA 11.8 wheels |
 | Precision | bf16 autocast on CUDA, fp32 on CPU |
 | Threads | set `OMP_NUM_THREADS=12 MKL_NUM_THREADS=12` on many-core hosts. Uncapped torch ran 4.6× slower on the 256-core server |
-| System dependencies | `libsndfile` (bundled in the `soundfile` wheels on Windows/macOS; `apt install libsndfile1` on minimal Linux), `python3.10-venv` on Ubuntu, `bash` for the `.sh` launchers (they call `python` from the active venv; override with `PYTHON=/path/to/python`), internet access on the first run (asset download and the `wavlm-base-plus` config/weights from the HF hub). No ffmpeg is needed: inputs are wav |
+| System dependencies | `libsndfile` (bundled in the `soundfile` wheels on Windows/macOS; `apt install libsndfile1` on minimal Linux), `python3.10-venv` on Ubuntu, `bash` for the `.sh` launchers (they call `python` from the active venv; override with `PYTHON=/path/to/python` for `run_inference.sh`, `PY=` for the `train/*.sh` launchers), internet access on the first run (asset download and the `wavlm-base-plus` config/weights from the HF hub; see *Offline machines*). No ffmpeg is needed: inputs are wav |
 
 ### Pretrained dependencies
 
@@ -143,6 +149,7 @@ The final weights of three ensemble members, **`v12`, `v12s62` and `v5all`**, we
 | `v12` (12-layer, seed 61, final epoch) | natural | `v12_ep4` (same run, epoch 4) |
 | `v12s62` (12-layer, seed 62) | natural | `v12_ep4` |
 | `v5all` (v5_S recipe trained on all validation data) | synthetic (×2) | `v5_S` |
+| habit model (original pickle) | natural post-pass | `checkpoints/habit_model.pkl`, retrained with the same recipe (`train/train_habit.py`); agrees with the shipped test decisions on 98.8 % of natural clips |
 
 **What the substitution costs.** We ran live inference on all 5,517 test clips and compared the result with the uploaded leaderboard file (`PP.agreement`, 0.2 s collar):
 
@@ -153,7 +160,7 @@ The final weights of three ensemble members, **`v12`, `v12s62` and `v5all`**, we
 
 Scored instead with the official scorer (`src/reference_scorer.py`, the uploaded file as reference), which the technical report quotes: all clips F1 0.9844 / Dice 0.9716, natural 0.9661 / 0.9589, synthetic 0.9981 / 0.9925.
 
-Synthetic predictions change only by millisecond edge shifts. Natural predictions move more, because 2 of the 7 natural members are replaced by one checkpoint. The exact leaderboard file is therefore reproduced from the cached posteriors (next section), and live inference is the closest run possible with the surviving weights.
+Synthetic predictions change only by millisecond edge shifts. Natural predictions move more, because 2 of the 7 natural members are replaced by one checkpoint and the habit model is the retrain. The exact leaderboard file is therefore reproduced from the cached posteriors (next section), and live inference is the closest run possible with the surviving weights.
 
 All three can be retrained with the commands in [Training](#training). Seeds are fixed, but bit-exact equality with the lost weights is not guaranteed.
 
@@ -197,9 +204,14 @@ Paths come from two variables: `INDOML_ROOT` (`src/paths.py`, default `./workdir
 | `valall_audio` | 2,501 | `python make_valtune.py --name valall_audio --half all` (only for `v5all`) |
 | `synth_aug` | 9,982 | `python synth.py --name synth_aug --n 10000` (seed 0, SNR −5…15 dB, 1–4 inserted events, TUNE-half noise bank) |
 | `synth_mask_t` | 9,000 | `python -c "import synth; synth.build_masked('synth_mask_t')"` (seed 5, SNR −12…2 dB, 2–8 s long events masked by speech, TUNE-half bank) |
-| `silver_long` | 12,014 | the `unverified_timestamps` tier: `python extract_audio.py hf --name silver_audio --tier unverified_timestamps`, then keep clips whose longest event is ≥ 1.5 s |
+| `silver_long` | 12,014 | the `unverified_timestamps` tier: `python extract_audio.py hf --name silver_audio --tier unverified_timestamps`, then `python ../scripts/make_silver_long.py` (keeps clips whose longest event is ≥ 1.5 s) |
 
 The `gold_audio` and `val_audio` commands are the verbatim launch lines. The other rows follow the scripts' defaults and our notes. The original launch lines for `synth_aug` (`--n`) and `silver_long` (an extra filter removed 216 of 12,230 candidate clips) were not recorded exactly.
+
+**BEATs features.** bts_C and bts_R read frozen BEATs-strong features precomputed for every store they touch (`$INDOML_ROOT/beats/`). Build them once after the stores, from `src/` (needs `python scripts/download_assets.py --what beats`):
+```bash
+python extract_beats.py gold_audio synth_aug synth_mask_t valtune_audio silver_long val_audio test_audio
+```
 
 **3. Members.** Each checkpoint stores its full argparse config, which is also kept in `configs/members_cfg.json`. `train/cfg_to_cmd.py` prints the exact `finetune.py` command for every member and checks that it re-parses to the stored config:
 
@@ -222,7 +234,7 @@ This trains on gold plus the TUNE half of validation and reports AUC on the held
 **5. Test posteriors** for the rebuild. Training writes checkpoints to `$INDOML_ROOT/ckpt/`, which is where this script reads them. To use the downloaded ones instead, copy them there first:
 ```bash
 mkdir -p workdir/ckpt && cp checkpoints/*.pt workdir/ckpt/
-python scripts/tta_posteriors.py hon_A test_audio [--tta] --out posteriors/     # needs workdir/audio/test_audio + BEATs features for bts_*
+python scripts/tta_posteriors.py hon_A test_audio [--tta] --out posteriors/     # needs workdir/audio/test_audio + BEATs features of test_audio for bts_*
 ```
 
 ## Tests
